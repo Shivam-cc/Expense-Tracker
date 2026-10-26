@@ -7,8 +7,10 @@ import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -18,10 +20,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Per-IP sliding-window rate limiter.
+ * Per-IP fixed-window rate limiter (in-memory, single instance).
  * <ul>
- *   <li>Auth endpoints ({@code /api/auth/**}): 15 requests / minute</li>
- *   <li>All other endpoints: 300 requests / minute</li>
+ *   <li>Auth endpoints ({@code /api/auth/**}): {@code app.rate-limit.auth-max} requests / minute</li>
+ *   <li>All other endpoints: {@code app.rate-limit.general-max} requests / minute</li>
  * </ul>
  * Responds with HTTP 429 when a bucket is exhausted.
  */
@@ -29,14 +31,25 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Order(1)
 public class RateLimitFilter implements Filter {
 
-    private static final int AUTH_MAX = 15;
-    private static final int GENERAL_MAX = 300;
     private static final long WINDOW_MS = 60_000L;
 
     private record Window(AtomicInteger count, long resetAt) {}
 
     private final Map<String, Window> authBuckets = new ConcurrentHashMap<>();
     private final Map<String, Window> generalBuckets = new ConcurrentHashMap<>();
+
+    private final ClientIpResolver clientIpResolver;
+    private final int authMax;
+    private final int generalMax;
+
+    public RateLimitFilter(
+            ClientIpResolver clientIpResolver,
+            @Value("${app.rate-limit.auth-max:15}") int authMax,
+            @Value("${app.rate-limit.general-max:300}") int generalMax) {
+        this.clientIpResolver = clientIpResolver;
+        this.authMax = authMax;
+        this.generalMax = generalMax;
+    }
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
@@ -45,12 +58,12 @@ public class RateLimitFilter implements Filter {
         HttpServletRequest  request  = (HttpServletRequest)  req;
         HttpServletResponse response = (HttpServletResponse) res;
 
-        String ip   = resolveClientIp(request);
+        String ip   = clientIpResolver.resolve(request);
         String path = request.getRequestURI();
 
         boolean isAuth = path.startsWith("/api/auth/");
         Map<String, Window> buckets = isAuth ? authBuckets : generalBuckets;
-        int max = isAuth ? AUTH_MAX : GENERAL_MAX;
+        int max = isAuth ? authMax : generalMax;
 
         if (exceeded(ip, buckets, max)) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
@@ -75,12 +88,11 @@ public class RateLimitFilter implements Filter {
         return w.count().get() > max;
     }
 
-    /** Respects {@code X-Forwarded-For} from reverse proxies (Railway, Vercel). */
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+    /** Drops windows that have already reset so the maps cannot grow without bound. */
+    @Scheduled(fixedDelay = 60_000L)
+    void evictExpired() {
+        long now = Instant.now().toEpochMilli();
+        authBuckets.values().removeIf(w -> now > w.resetAt());
+        generalBuckets.values().removeIf(w -> now > w.resetAt());
     }
 }

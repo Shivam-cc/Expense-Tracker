@@ -1,67 +1,112 @@
 package com.expensetracker.service;
 
+import com.expensetracker.exception.TooManyRequestsException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Generates, stores, and verifies time-limited 6-digit OTPs.
- * Storage is in-memory; entries expire after OTP_EXPIRY_SECONDS.
+ * Generates, stores, and verifies time-limited 6-digit OTPs (in-memory, single instance).
+ * <p>
+ * Abuse limits are tracked per email over a one-hour window and are NOT reset by requesting
+ * a new code, so resending cannot be used to get unlimited guesses:
+ * at most {@value #MAX_SENDS_PER_WINDOW} codes and {@value #MAX_FAILED_ATTEMPTS} wrong guesses
+ * per window, and at least {@value #MIN_RESEND_SECONDS}s between sends.
  */
 @Service
 public class OtpService {
 
-    private static final int OTP_EXPIRY_SECONDS = 300;   // 5 minutes
-    private static final int MAX_ATTEMPTS = 5;
+    static final int OTP_EXPIRY_SECONDS = 300;
+    static final int MIN_RESEND_SECONDS = 30;
+    static final int MAX_SENDS_PER_WINDOW = 5;
+    static final int MAX_FAILED_ATTEMPTS = 5;
+    static final Duration WINDOW = Duration.ofHours(1);
 
-    private record OtpEntry(String otp, Instant expiry, AtomicInteger attempts) {}
+    private static final class State {
+        String otp;
+        Instant expiry;
+        Instant lastSent;
+        Instant windowStart;
+        int sendCount;
+        int attempts;
+    }
 
-    private final Map<String, OtpEntry> store = new ConcurrentHashMap<>();
+    private final Map<String, State> store = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
 
-    /** Generates a new OTP for the given email and returns it. Overwrites any existing entry. */
+    /**
+     * Generates a new OTP for the email, replacing any previous one.
+     * @throws TooManyRequestsException if the email is being throttled
+     */
     public String generateAndStore(String email) {
+        String key = normalize(email);
+        Instant now = Instant.now();
         String otp = String.format("%06d", random.nextInt(1_000_000));
-        store.put(email.toLowerCase(),
-                new OtpEntry(otp, Instant.now().plusSeconds(OTP_EXPIRY_SECONDS), new AtomicInteger(0)));
+
+        // compute() makes the check-and-update atomic per email
+        store.compute(key, (k, state) -> {
+            if (state == null || now.isAfter(state.windowStart.plus(WINDOW))) {
+                state = new State();
+                state.windowStart = now;
+            }
+            if (state.lastSent != null && now.isBefore(state.lastSent.plusSeconds(MIN_RESEND_SECONDS))) {
+                throw new TooManyRequestsException(
+                        "Please wait " + MIN_RESEND_SECONDS + " seconds before requesting another code.");
+            }
+            if (state.sendCount >= MAX_SENDS_PER_WINDOW) {
+                throw new TooManyRequestsException("Too many verification codes requested. Try again later.");
+            }
+            state.otp = otp;
+            state.expiry = now.plusSeconds(OTP_EXPIRY_SECONDS);
+            state.lastSent = now;
+            state.sendCount++;
+            return state;
+        });
         return otp;
     }
 
     /**
-     * Verifies the OTP for the given email.
-     * Returns {@code true} if valid; removes entry on success or expiry.
-     * Throws {@link RuntimeException} if max attempts exceeded.
+     * Verifies the OTP. Returns {@code true} and consumes it if valid.
+     * @throws TooManyRequestsException once the failed-attempt budget for the window is spent
      */
     public boolean verify(String email, String otp) {
-        OtpEntry entry = store.get(email.toLowerCase());
-        if (entry == null) return false;
+        String key = normalize(email);
+        boolean[] result = {false};
 
-        if (Instant.now().isAfter(entry.expiry())) {
-            store.remove(email.toLowerCase());
-            return false;
-        }
+        store.computeIfPresent(key, (k, state) -> {
+            Instant now = Instant.now();
+            if (now.isAfter(state.windowStart.plus(WINDOW))) return null;
+            if (state.attempts >= MAX_FAILED_ATTEMPTS) {
+                throw new TooManyRequestsException("Too many incorrect attempts. Please try again later.");
+            }
+            if (now.isAfter(state.expiry)) return state;
 
-        int attempts = entry.attempts().incrementAndGet();
-        if (attempts > MAX_ATTEMPTS) {
-            store.remove(email.toLowerCase());
-            throw new RuntimeException("Too many OTP attempts. Please request a new code.");
-        }
+            if (otp != null && MessageDigest.isEqual(
+                    state.otp.getBytes(StandardCharsets.UTF_8), otp.getBytes(StandardCharsets.UTF_8))) {
+                result[0] = true;
+                return null;
+            }
 
-        if (!entry.otp().equals(otp)) {
-            return false;
-        }
-
-        store.remove(email.toLowerCase());
-        return true;
+            state.attempts++;
+            return state;
+        });
+        return result[0];
     }
 
-    /** Returns {@code true} if a non-expired OTP entry exists for the given email. */
-    public boolean hasValidOtp(String email) {
-        OtpEntry entry = store.get(email.toLowerCase());
-        return entry != null && Instant.now().isBefore(entry.expiry());
+    @Scheduled(fixedDelay = 300_000L)
+    void evictExpired() {
+        Instant now = Instant.now();
+        store.values().removeIf(s -> now.isAfter(s.windowStart.plus(WINDOW)));
+    }
+
+    private static String normalize(String email) {
+        return email.trim().toLowerCase();
     }
 }

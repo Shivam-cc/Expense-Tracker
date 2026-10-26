@@ -1,5 +1,6 @@
 package com.expensetracker.config;
 
+import com.expensetracker.exception.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -40,6 +41,16 @@ public class GlobalExceptionHandler {
         response.put("message", "Invalid email or password");
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<Map<String, Object>> handleApiException(ApiException ex) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("timestamp", LocalDateTime.now().toString());
+        response.put("status", ex.getStatus().value());
+        response.put("message", ex.getMessage());
+
+        return ResponseEntity.status(ex.getStatus()).body(response);
     }
 
     @ExceptionHandler(RuntimeException.class)

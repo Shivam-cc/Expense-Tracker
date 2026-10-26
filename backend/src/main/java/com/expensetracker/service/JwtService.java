@@ -1,6 +1,7 @@
 package com.expensetracker.service;
 
 import io.jsonwebtoken.Claims;
+import jakarta.annotation.PostConstruct;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -17,11 +18,32 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
-    @Value("${app.jwt.secret}")
+    private static final int MIN_SECRET_BYTES = 32;
+
+    @Value("${app.jwt.secret:}")
     private String secretKey;
 
     @Value("${app.jwt.expiration-ms}")
     private long jwtExpiration;
+
+    private SecretKey signInKey;
+
+    @PostConstruct
+    void initKey() {
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET is not set. Provide a base64-encoded secret of at least 256 bits.");
+        }
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secretKey.trim());
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("JWT_SECRET must be valid base64.");
+        }
+        if (keyBytes.length < MIN_SECRET_BYTES) {
+            throw new IllegalStateException("JWT_SECRET must decode to at least 256 bits (32 bytes).");
+        }
+        signInKey = Keys.hmacShaKeyFor(keyBytes);
+    }
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -68,7 +90,6 @@ public class JwtService {
     }
 
     private SecretKey getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        return Keys.hmacShaKeyFor(keyBytes);
+        return signInKey;
     }
 }

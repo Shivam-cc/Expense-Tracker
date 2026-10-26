@@ -2,6 +2,7 @@ package com.expensetracker.controller;
 
 import com.expensetracker.dto.ExpenseRequest;
 import com.expensetracker.dto.ExpenseResponse;
+import com.expensetracker.exception.BadRequestException;
 import com.expensetracker.model.User;
 import com.expensetracker.service.ExpenseService;
 import jakarta.validation.Valid;
@@ -15,12 +16,16 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/expenses")
 @RequiredArgsConstructor
 public class ExpenseController {
+
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final List<String> SORTABLE_FIELDS = List.of("date", "amount", "description", "createdAt");
 
     private final ExpenseService expenseService;
 
@@ -38,10 +43,17 @@ public class ExpenseController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "date") String sortBy,
             @RequestParam(defaultValue = "desc") String direction) {
+        if (page < 0) {
+            throw new BadRequestException("page must be >= 0");
+        }
+        if (!SORTABLE_FIELDS.contains(sortBy)) {
+            throw new BadRequestException("sortBy must be one of " + SORTABLE_FIELDS);
+        }
+        int clampedSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Sort sort = direction.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
-        PageRequest pageRequest = PageRequest.of(page, size, sort);
+        PageRequest pageRequest = PageRequest.of(page, clampedSize, sort.and(Sort.by("id").descending()));
         return ResponseEntity.ok(expenseService.getUserExpenses(user, pageRequest));
     }
 

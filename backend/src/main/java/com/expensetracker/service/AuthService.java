@@ -4,11 +4,16 @@ import com.expensetracker.dto.AuthRequest;
 import com.expensetracker.dto.AuthResponse;
 import com.expensetracker.dto.RegisterRequest;
 import com.expensetracker.dto.SendOtpRequest;
+import com.expensetracker.exception.BadRequestException;
+import com.expensetracker.exception.ConflictException;
+import com.expensetracker.exception.NotFoundException;
+import com.expensetracker.exception.ServiceUnavailableException;
 import com.expensetracker.model.Role;
 import com.expensetracker.model.User;
 import com.expensetracker.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,23 +37,30 @@ public class AuthService {
     @Value("${app.otp.dev-mode:false}")
     private boolean devOtpMode;
 
+    private static final String SEND_OTP_MESSAGE =
+            "If this email can be used to sign up, a verification code has been sent to it.";
+
     /**
-     * Validates the email, generates an OTP, and sends it.
-     * In dev mode the OTP is also returned in the response so you can test without email.
+     * Generates an OTP and emails it. The response is identical whether or not the email already has
+     * an account (such addresses get a "you already have an account" email instead of a code).
+     * The OTP is returned in the response only in dev mode.
      */
     public Map<String, Object> sendOtp(SendOtpRequest request) {
         String email = request.getEmail().trim().toLowerCase();
-
-        if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already registered");
-        }
+        String name = request.getName().trim();
 
         String otp = otpService.generateAndStore(email);
-        boolean emailSent = emailService.sendOtpEmail(email, otp, request.getName());
+        boolean emailSent = userRepository.existsByEmail(email)
+                ? emailService.sendAccountExistsEmail(email, name)
+                : emailService.sendOtpEmail(email, otp, name);
 
         Map<String, Object> response = new HashMap<>();
-        response.put("message", "Verification code sent to " + email);
-        if (devOtpMode || !emailSent) response.put("devOtp", otp);
+        response.put("message", SEND_OTP_MESSAGE);
+        if (devOtpMode) {
+            response.put("devOtp", otp);
+        } else if (!emailSent) {
+            throw new ServiceUnavailableException("Could not send verification email");
+        }
         return response;
     }
 
@@ -57,19 +69,19 @@ public class AuthService {
 
         // Verify OTP before creating the account
         if (!otpService.verify(email, request.getOtp())) {
-            throw new RuntimeException("Invalid or expired verification code");
+            throw new BadRequestException("Invalid or expired verification code");
         }
 
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already registered");
+            throw new ConflictException("Email already registered");
         }
 
-        // Decrypt RSA-OAEP envelope → plain SHA-256 hash from browser
+        // Decrypt RSA-OAEP envelope -> plain SHA-256 hash from browser
         String decodedPassword;
         try {
             decodedPassword = keyService.decrypt(request.getPassword());
         } catch (Exception e) {
-            throw new RuntimeException("Invalid password encoding");
+            throw new BadRequestException("Invalid password encoding");
         }
 
         User user = User.builder()
@@ -79,7 +91,12 @@ public class AuthService {
                 .role(Role.USER)
                 .build();
 
-        userRepository.save(user);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException e) {
+            // Concurrent registration won the unique-email race
+            throw new ConflictException("Email already registered");
+        }
         String jwtToken = jwtService.generateToken(user);
 
         return AuthResponse.builder()
@@ -88,16 +105,15 @@ public class AuthService {
                 .email(user.getEmail())
                 .build();
     }
-
     public AuthResponse login(AuthRequest request) {
         String email = request.getEmail().trim().toLowerCase();
 
-        // Decrypt RSA-OAEP envelope → plain SHA-256 hash from browser
+        // Decrypt RSA-OAEP envelope â†’ plain SHA-256 hash from browser
         String decodedPassword;
         try {
             decodedPassword = keyService.decrypt(request.getPassword());
         } catch (Exception e) {
-            throw new RuntimeException("Invalid password encoding");
+            throw new BadRequestException("Invalid password encoding");
         }
 
         authenticationManager.authenticate(
@@ -105,7 +121,7 @@ public class AuthService {
         );
 
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new NotFoundException("User not found"));
 
         String jwtToken = jwtService.generateToken(user);
 

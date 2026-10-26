@@ -2,6 +2,7 @@ package com.expensetracker.service;
 
 import com.expensetracker.dto.ExpenseRequest;
 import com.expensetracker.dto.ExpenseResponse;
+import com.expensetracker.exception.NotFoundException;
 import com.expensetracker.model.Category;
 import com.expensetracker.model.Expense;
 import com.expensetracker.model.User;
@@ -26,11 +27,8 @@ public class ExpenseService {
     private final CategoryRepository categoryRepository;
 
     public ExpenseResponse createExpense(ExpenseRequest request, User user) {
-        Category category = null;
-        if (request.getCategoryId() != null) {
-            category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Category not found"));
-        }
+        Category category = resolveCategory(request.getCategoryId(), user);
+
 
         Expense expense = Expense.builder()
                 .description(request.getDescription())
@@ -51,29 +49,18 @@ public class ExpenseService {
     }
 
     public ExpenseResponse getExpenseById(Long id, User user) {
-        Expense expense = expenseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Expense not found"));
+        Expense expense = findOwned(id, user);
 
-        if (!expense.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Access denied");
-        }
 
         return mapToResponse(expense);
     }
 
     public ExpenseResponse updateExpense(Long id, ExpenseRequest request, User user) {
-        Expense expense = expenseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Expense not found"));
+        Expense expense = findOwned(id, user);
 
-        if (!expense.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Access denied");
-        }
 
-        Category category = null;
-        if (request.getCategoryId() != null) {
-            category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Category not found"));
-        }
+        Category category = resolveCategory(request.getCategoryId(), user);
+
 
         expense.setDescription(request.getDescription());
         expense.setAmount(request.getAmount());
@@ -86,12 +73,8 @@ public class ExpenseService {
     }
 
     public void deleteExpense(Long id, User user) {
-        Expense expense = expenseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Expense not found"));
+        Expense expense = findOwned(id, user);
 
-        if (!expense.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Access denied");
-        }
 
         expenseRepository.delete(expense);
     }
@@ -108,6 +91,18 @@ public class ExpenseService {
                         r -> r[0] != null ? (String) r[0] : "Uncategorized",
                         r -> (BigDecimal) r[1]
                 ));
+    }
+
+    private Expense findOwned(Long id, User user) {
+        return expenseRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new NotFoundException("Expense not found"));
+    }
+
+    /** Only the user's own categories or global ones may be attached to an expense. */
+    private Category resolveCategory(Long categoryId, User user) {
+        if (categoryId == null) return null;
+        return categoryRepository.findUsableById(categoryId, user.getId())
+                .orElseThrow(() -> new NotFoundException("Category not found"));
     }
 
     private ExpenseResponse mapToResponse(Expense expense) {

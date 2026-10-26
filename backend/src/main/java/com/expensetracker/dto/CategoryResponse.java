@@ -14,4 +14,6 @@ public class CategoryResponse {
     private String name;
     private String icon;
     private String color;
+    /** True for built-in categories shared by all users; these are read-only. */
+    private boolean global;
 }
