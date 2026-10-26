@@ -7,6 +7,7 @@ import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -19,7 +20,10 @@ import java.io.IOException;
 @Component
 @Order(3)
 @Slf4j
+@RequiredArgsConstructor
 public class RequestLoggingFilter implements Filter {
+
+    private final ClientIpResolver clientIpResolver;
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
@@ -29,7 +33,7 @@ public class RequestLoggingFilter implements Filter {
         HttpServletResponse response = (HttpServletResponse) res;
 
         long start = System.currentTimeMillis();
-        String ip  = resolveClientIp(request);
+        String ip  = clientIpResolver.resolve(request);
 
         try {
             chain.doFilter(req, res);
@@ -42,13 +46,5 @@ public class RequestLoggingFilter implements Filter {
                     response.getStatus(),
                     elapsed);
         }
-    }
-
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }

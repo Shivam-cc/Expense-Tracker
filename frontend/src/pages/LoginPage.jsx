@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Eye, EyeOff, TrendingDown } from 'lucide-react'
 
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const notice = useLocation().state?.notice
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
@@ -42,6 +43,11 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg p-8">
+          {notice && !error && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
+              {notice}
+            </div>
+          )}
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
@@ -61,7 +67,12 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Password</label>
+                <Link to="/forgot-password" className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}

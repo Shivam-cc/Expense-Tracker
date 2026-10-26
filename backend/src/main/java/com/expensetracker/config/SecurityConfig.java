@@ -29,13 +29,21 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
+    @Value("${spring.h2.console.enabled:false}")
+    private boolean h2ConsoleEnabled;
+
+    @Value("${springdoc.api-docs.enabled:false}")
+    private boolean apiDocsEnabled;
+
     /**
      * Registers a CorsFilter at HIGHEST_PRECEDENCE so CORS headers are attached
-     * to EVERY response — including 401/403/500 from Spring Security.
+     * to EVERY response ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â including 401/403/500 from Spring Security.
      * Without this, the browser sees a CORS error instead of the real error message.
      */
     @Bean
@@ -51,11 +59,20 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
-                        .anyRequest().authenticated()
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+                    auth.requestMatchers("/api/auth/**").permitAll();
+                    if (h2ConsoleEnabled) {
+                        auth.requestMatchers("/h2-console/**").permitAll();
+                    }
+                    if (apiDocsEnabled) {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -75,9 +92,10 @@ public class SecurityConfig {
                 .toList();
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization"));
-        config.setAllowCredentials(true);
+        // Bearer tokens in the Authorization header, no cookies: credentialed CORS is not needed.
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setExposedHeaders(List.of("Content-Disposition")); // CSV export filename
+        config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

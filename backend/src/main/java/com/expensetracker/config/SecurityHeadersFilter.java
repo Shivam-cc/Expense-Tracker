@@ -33,6 +33,9 @@ public class SecurityHeadersFilter implements Filter {
         // Legacy XSS filter (IE/older browsers)
         response.setHeader("X-XSS-Protection", "1; mode=block");
 
+        // Browsers ignore this over plain HTTP, so it is safe to send unconditionally behind a TLS-terminating proxy
+        response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
         // Control referrer information
         response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
 

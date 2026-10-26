@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../services/api'
 import OtpInput from '../components/OtpInput'
+import { PASSWORD_HINT, validatePassword } from '../utils/password'
 import { Eye, EyeOff, TrendingDown, ArrowLeft, Mail } from 'lucide-react'
 
 function fmtTime(secs) {
@@ -25,7 +26,7 @@ export default function RegisterPage() {
   const [devOtp, setDevOtp] = useState(null)  // only set locally when backend returns it
   const [countdown, setCountdown] = useState(300) // 5-min expiry
   const [resendCooldown, setResendCooldown] = useState(30)
-  const [canResend, setCanResend] = useState(false)
+  const canResend = resendCooldown <= 0
 
   // ── shared ────────────────────────────────────────────────────────────────
   const [error, setError] = useState('')
@@ -41,7 +42,6 @@ export default function RegisterPage() {
   // Resend cooldown
   useEffect(() => {
     if (step !== 2 || canResend) return
-    if (resendCooldown <= 0) { setCanResend(true); return }
     const t = setInterval(() => setResendCooldown((c) => c - 1), 1000)
     return () => clearInterval(t)
   }, [step, resendCooldown, canResend])
@@ -55,6 +55,8 @@ export default function RegisterPage() {
   const handleSendOtp = async (e) => {
     e.preventDefault()
     setError('')
+    const passwordError = validatePassword(form.password)
+    if (passwordError) { setError(passwordError); return }
     setLoading(true)
     try {
       const res = await authApi.sendOtp({ name: form.name, email: form.email })
@@ -62,7 +64,6 @@ export default function RegisterPage() {
       setStep(2)
       setCountdown(300)
       setResendCooldown(30)
-      setCanResend(false)
       setOtp('')
     } catch (err) {
       setError(err.message || 'Failed to send code. Try again.')
@@ -95,7 +96,6 @@ export default function RegisterPage() {
       if (res.devOtp) setDevOtp(res.devOtp)
       setCountdown(300)
       setResendCooldown(30)
-      setCanResend(false)
       setOtp('')
     } catch (err) {
       setError(err.message || 'Failed to resend code.')
@@ -185,7 +185,7 @@ export default function RegisterPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password <span className="text-gray-400 font-normal">(min. 6 characters)</span>
+                  Password <span className="text-gray-400 font-normal">({PASSWORD_HINT})</span>
                 </label>
                 <div className="relative">
                   <input
@@ -194,7 +194,8 @@ export default function RegisterPage() {
                     value={form.password}
                     onChange={handleChange}
                     required
-                    minLength={6}
+                    minLength={8}
+                    maxLength={128}
                     placeholder="••••••••"
                     className={`${inputCls} pr-10`}
                   />

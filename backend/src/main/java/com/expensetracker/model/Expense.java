@@ -24,7 +24,7 @@ public class Expense {
     private Long id;
 
     @NotBlank
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String description;
 
     @NotNull
@@ -44,6 +44,7 @@ public class Expense {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(length = 1000)
     private String notes;
 
     @Column(name = "created_at", updatable = false)
