@@ -17,11 +17,13 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final ExpenseRepository expenseRepository;
 
+    @Transactional
     public CategoryResponse createCategory(CategoryRequest request, User user) {
         Category category = Category.builder()
                 .name(request.getName())
@@ -41,6 +43,7 @@ public class CategoryService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
     public CategoryResponse updateCategory(Long id, CategoryRequest request, User user) {
         Category category = findOwnedCategory(id, user);
 

@@ -109,6 +109,7 @@ public class RefreshTokenService {
                 .expiresIn(jwtService.getAccessTokenTtlSeconds())
                 .name(user.getName())
                 .email(user.getEmail())
+                .currency(user.getCurrency())
                 .build();
         return new Issued(saved.getId(), response);
     }

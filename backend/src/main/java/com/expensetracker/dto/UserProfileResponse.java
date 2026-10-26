@@ -14,5 +14,6 @@ import java.time.LocalDateTime;
 public class UserProfileResponse {
     private String name;
     private String email;
+    private String currency;
     private LocalDateTime createdAt;
 }

@@ -19,6 +19,7 @@ public class RegisterRequest {
 
     @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
+    @Size(max = 255)
     private String email;
 
     @NotBlank(message = "Password is required")
@@ -28,4 +29,8 @@ public class RegisterRequest {
 
     @NotBlank(message = "OTP is required")
     private String otp;
+
+    public void setName(String name) {
+        this.name = Strings.trim(name);
+    }
 }

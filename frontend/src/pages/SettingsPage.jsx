@@ -7,6 +7,8 @@ import { ArrowLeft, TrendingDown, LogOut, Trash2, X } from 'lucide-react'
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
+const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD', 'AED', 'CHF', 'CNY']
+
 const primaryBtn =
   'px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white rounded-lg text-sm font-medium transition-colors'
 
@@ -32,6 +34,7 @@ function Section({ title, description, children }) {
 function ProfileSection() {
   const { user, updateUser } = useAuth()
   const [name, setName] = useState(user?.name || '')
+  const [currency, setCurrency] = useState(user?.currency || 'INR')
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
 
@@ -40,8 +43,8 @@ function ProfileSection() {
     setNotice(null)
     setSaving(true)
     try {
-      const updated = await userApi.update({ name: name.trim() })
-      updateUser({ name: updated.name })
+      const updated = await userApi.update({ name: name.trim(), currency })
+      updateUser({ name: updated.name, currency: updated.currency })
       setNotice({ type: 'success', text: 'Profile updated.' })
     } catch (err) {
       setNotice({ type: 'error', text: err.message })
@@ -64,11 +67,19 @@ function ProfileSection() {
           />
         </div>
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputCls}>
+            {[...new Set([user?.currency, ...CURRENCIES].filter(Boolean))].map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
           <input value={user?.email || ''} disabled className={`${inputCls} bg-gray-50 text-gray-500`} />
           <p className="text-xs text-gray-400 mt-1">Changing your email address isn't supported yet.</p>
         </div>
-        <button type="submit" disabled={saving || name.trim() === user?.name} className={primaryBtn}>
+        <button type="submit" disabled={saving || (name.trim() === user?.name && currency === (user?.currency || 'INR'))} className={primaryBtn}>
           {saving ? 'Saving…' : 'Save changes'}
         </button>
       </form>

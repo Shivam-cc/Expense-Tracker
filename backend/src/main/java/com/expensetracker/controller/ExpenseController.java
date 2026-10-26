@@ -2,22 +2,27 @@ package com.expensetracker.controller;
 
 import com.expensetracker.dto.ExpenseRequest;
 import com.expensetracker.dto.ExpenseResponse;
+import com.expensetracker.dto.PageResponse;
+import com.expensetracker.dto.SummaryResponse;
 import com.expensetracker.exception.BadRequestException;
 import com.expensetracker.model.User;
+import com.expensetracker.service.ExpenseCsvWriter;
 import com.expensetracker.service.ExpenseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/expenses")
@@ -26,6 +31,7 @@ public class ExpenseController {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final List<String> SORTABLE_FIELDS = List.of("date", "amount", "description", "createdAt");
+    private static final MediaType CSV = new MediaType("text", "csv", StandardCharsets.UTF_8);
 
     private final ExpenseService expenseService;
 
@@ -36,13 +42,21 @@ public class ExpenseController {
         return ResponseEntity.ok(expenseService.createExpense(request, user));
     }
 
+    /**
+     * Pages through the caller's expenses. Optional filters: {@code q} (case-insensitive match on
+     * description/notes), {@code categoryId} ({@code 0} = uncategorized), {@code startDate}, {@code endDate}.
+     */
     @GetMapping
-    public ResponseEntity<Page<ExpenseResponse>> getExpenses(
+    public ResponseEntity<PageResponse<ExpenseResponse>> getExpenses(
             @AuthenticationPrincipal User user,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "date") String sortBy,
-            @RequestParam(defaultValue = "desc") String direction) {
+            @RequestParam(defaultValue = "desc") String direction,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         if (page < 0) {
             throw new BadRequestException("page must be >= 0");
         }
@@ -53,8 +67,30 @@ public class ExpenseController {
         Sort sort = direction.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
+        // id as tie-breaker keeps page boundaries stable when many rows share a date
         PageRequest pageRequest = PageRequest.of(page, clampedSize, sort.and(Sort.by("id").descending()));
-        return ResponseEntity.ok(expenseService.getUserExpenses(user, pageRequest));
+        return ResponseEntity.ok(expenseService.getUserExpenses(user, q, categoryId, startDate, endDate, pageRequest));
+    }
+
+    /** Downloads the filtered expenses as CSV (same filters as the list endpoint, without paging). */
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportExpenses(
+            @AuthenticationPrincipal User user,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        String csv = ExpenseCsvWriter.write(
+                expenseService.findForExport(user, q, categoryId, startDate, endDate), user.getCurrency());
+        // UTF-8 BOM so Excel detects the encoding of non-ASCII descriptions
+        byte[] body = ("\uFEFF" + csv).getBytes(StandardCharsets.UTF_8);
+
+        String filename = "expenses-" + (startDate != null ? startDate : "beginning")
+                + "-" + (endDate != null ? endDate : LocalDate.now()) + ".csv";
+        return ResponseEntity.ok()
+                .contentType(CSV)
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(filename).build().toString())
+                .body(body);
     }
 
     @GetMapping("/{id}")
@@ -81,16 +117,10 @@ public class ExpenseController {
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<Map<String, Object>> getExpenseSummary(
+    public ResponseEntity<SummaryResponse> getExpenseSummary(
             @AuthenticationPrincipal User user,
-            @RequestParam LocalDate startDate,
-            @RequestParam LocalDate endDate) {
-        BigDecimal total = expenseService.getTotalExpenses(user, startDate, endDate);
-        Map<String, BigDecimal> byCategory = expenseService.getExpensesByCategory(user, startDate, endDate);
-
-        return ResponseEntity.ok(Map.of(
-                "total", total,
-                "byCategory", byCategory
-        ));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(expenseService.getSummary(user, startDate, endDate));
     }
 }

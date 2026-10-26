@@ -8,8 +8,12 @@ import {
 } from 'lucide-react'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-function fmt(amount) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount)
+function fmt(amount, currency = 'INR') {
+  try {
+    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : undefined, { style: 'currency', currency }).format(amount)
+  } catch {
+    return `${currency} ${Number(amount).toFixed(2)}`
+  }
 }
 function today() {
   return new Date().toISOString().split('T')[0]
@@ -21,6 +25,7 @@ function firstOfMonth() {
 
 // ─── Expense Modal ──────────────────────────────────────────────────────────
 function ExpenseModal({ expense, categories, onSave, onClose }) {
+  const { user } = useAuth()
   const [form, setForm] = useState({
     description: expense?.description || '',
     amount: expense?.amount || '',
@@ -81,7 +86,7 @@ function ExpenseModal({ expense, categories, onSave, onClose }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount ({user?.currency || 'INR'}) *</label>
               <input
                 type="number" name="amount" value={form.amount} onChange={handleChange}
                 required min="0.01" step="0.01" placeholder="0.00"
@@ -322,6 +327,7 @@ export default function DashboardPage() {
   }
 
   const totalPages = Math.ceil(totalElements / PAGE_SIZE)
+  const fmtC = (amount) => fmt(amount, user?.currency)
 
   // Category lookup map
   const catMap = Object.fromEntries(categories.map(c => [c.id, c]))
@@ -370,7 +376,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">This Month</p>
                 <p className="text-xl font-bold text-gray-900">
-                  {summary ? fmt(summary.total) : '—'}
+                  {summary ? fmtC(summary.total) : '—'}
                 </p>
               </div>
             </div>
@@ -400,13 +406,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Top spends by category this month */}
-        {summary?.byCategory && Object.keys(summary.byCategory).length > 0 && (
+        {summary?.byCategory?.length > 0 && (
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Spending by Category (This Month)</h3>
             <div className="flex flex-wrap gap-2">
-              {Object.entries(summary.byCategory).map(([name, amt]) => (
-                <span key={name} className="px-3 py-1.5 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
-                  {name}: {fmt(amt)}
+              {summary.byCategory.map((c) => (
+                <span key={c.categoryId ?? 'uncategorized'} className="px-3 py-1.5 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
+                  {c.name}: {fmtC(c.total)}
                 </span>
               ))}
             </div>
@@ -480,7 +486,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                          <span className="text-sm font-semibold text-gray-900">{fmt(exp.amount)}</span>
+                          <span className="text-sm font-semibold text-gray-900">{fmtC(exp.amount)}</span>
                           <button
                             onClick={() => setExpenseModal(exp)}
                             className="text-gray-400 hover:text-primary-600 transition-colors"

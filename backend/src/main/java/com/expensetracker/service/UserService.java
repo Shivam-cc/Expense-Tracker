@@ -15,6 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Currency;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -38,7 +40,10 @@ public class UserService {
     public UserProfileResponse updateProfile(User principal, UpdateProfileRequest request) {
         User user = load(principal);
         if (request.getName() != null) {
-            user.setName(request.getName().trim());
+            user.setName(request.getName());
+        }
+        if (request.getCurrency() != null) {
+            user.setCurrency(requireKnownCurrency(request.getCurrency()));
         }
         return toProfile(userRepository.save(user));
     }
@@ -80,6 +85,14 @@ public class UserService {
         userRepository.delete(user);
     }
 
+    private static String requireKnownCurrency(String code) {
+        try {
+            return Currency.getInstance(code).getCurrencyCode();
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Unknown currency code: " + code);
+        }
+    }
+
     private void requirePassword(User user, String rawPassword) {
         if (!accountLockService.verifyPassword(user, rawPassword)) {
             throw new BadRequestException(WRONG_PASSWORD);
@@ -95,6 +108,7 @@ public class UserService {
         return UserProfileResponse.builder()
                 .name(user.getName())
                 .email(user.getEmail())
+                .currency(user.getCurrency())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

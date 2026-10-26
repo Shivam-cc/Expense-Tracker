@@ -17,4 +17,6 @@ public class AuthResponse {
     private long expiresIn;
     private String name;
     private String email;
+    /** ISO 4217 code of the user's display currency. */
+    private String currency;
 }
