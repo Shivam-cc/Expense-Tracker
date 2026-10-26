@@ -1,16 +1,4 @@
-// Ensure the API URL always has a protocol prefix.
-// If VITE_API_URL is set without https:// (e.g. in Vercel dashboard) the browser
-// would treat it as a relative path on the current origin — so we force https://.
-function resolveBaseUrl() {
-  const raw = import.meta.env.VITE_API_URL
-  if (!raw) return 'http://localhost:8080/api'
-  const url = raw.startsWith('http://') || raw.startsWith('https://')
-    ? raw
-    : 'https://' + raw
-  return url.replace(/\/$/, '') + '/api'   // strip trailing slash, add /api
-}
-
-const BASE_URL = resolveBaseUrl()
+import { API_BASE_URL as BASE_URL } from '../config'
 
 function getToken() {
   return localStorage.getItem('token')
@@ -64,6 +52,21 @@ export const expensesApi = {
     request(`/expenses/${id}`, { method: 'DELETE' }),
   summary: (startDate, endDate) =>
     request(`/expenses/summary?startDate=${startDate}&endDate=${endDate}`),
+  // Bearer auth means a plain <a href> can't be used, so the CSV is fetched as a blob.
+  export: async (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    const token = getToken()
+    const res = await fetch(`${BASE_URL}/expenses/export?${qs}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || `Export failed with status ${res.status}`)
+    }
+    const disposition = res.headers.get('content-disposition') || ''
+    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+    return { blob: await res.blob(), filename: match ? decodeURIComponent(match[1]) : 'expenses.csv' }
+  },
 }
 
 export const categoriesApi = {
