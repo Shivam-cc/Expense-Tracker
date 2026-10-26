@@ -2,6 +2,7 @@ package com.expensetracker.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.expensetracker.model.OtpPurpose;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,10 +53,16 @@ public class EmailService {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    /** Sends the sign-up verification code. Returns true if delivered to SendGrid, false otherwise. */
-    public boolean sendOtpEmail(String toEmail, String otp, String name) {
+    /** Sends a verification code. Returns true if delivered to SendGrid, false otherwise. */
+    public boolean sendOtpEmail(String toEmail, String otp, String name, OtpPurpose purpose) {
         if (devMode) log.debug("[OTP] dev-mode code for {} => {}", toEmail, otp);
-        return send(toEmail, name, "Your ExpenseFlow Verification Code", buildOtpHtml(name, otp));
+        String subject = purpose == OtpPurpose.PASSWORD_RESET
+                ? "Your ExpenseFlow Password Reset Code"
+                : "Your ExpenseFlow Verification Code";
+        String intro = purpose == OtpPurpose.PASSWORD_RESET
+                ? "Your password reset code is:"
+                : "Your sign-up verification code is:";
+        return send(toEmail, name, subject, buildOtpHtml(name, otp, intro));
     }
 
     /** Sent instead of a code when someone starts sign-up with an email that already has an account. */
@@ -110,12 +117,12 @@ public class EmailService {
         }
     }
 
-    private String buildOtpHtml(String name, String otp) {
+    private String buildOtpHtml(String name, String otp, String intro) {
         return "<div style='font-family:Arial,sans-serif;max-width:500px;margin:0 auto;"
                 + "background:#f9fafb;padding:32px;border-radius:12px'>"
                 + "<h2 style='color:#2563eb;margin:0 0 8px'>ExpenseFlow</h2>"
                 + "<p style='color:#374151'>Hi " + HtmlUtils.htmlEscape(name) + ",</p>"
-                + "<p style='color:#374151'>Your sign-up verification code is:</p>"
+                + "<p style='color:#374151'>" + HtmlUtils.htmlEscape(intro) + "</p>"
                 + "<div style='font-size:38px;font-weight:700;letter-spacing:14px;color:#1e40af;"
                 + "background:#dbeafe;padding:20px;border-radius:8px;text-align:center;margin:20px 0'>"
                 + HtmlUtils.htmlEscape(otp) + "</div>"

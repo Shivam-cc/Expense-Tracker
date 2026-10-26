@@ -66,10 +66,8 @@ public class RateLimitFilter implements Filter {
         int max = isAuth ? authMax : generalMax;
 
         if (exceeded(ip, buckets, max)) {
-            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            response.setContentType("application/json");
-            response.getWriter().write(
-                "{\"message\":\"Too many requests. Please slow down.\",\"status\":429}");
+            JsonErrorWriter.write(request, response, HttpStatus.TOO_MANY_REQUESTS.value(),
+                    "Too many requests. Please slow down.");
             return;
         }
 

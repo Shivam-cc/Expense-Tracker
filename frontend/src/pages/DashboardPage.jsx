@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { expensesApi, categoriesApi } from '../services/api'
 import {
-  Plus, Pencil, Trash2, TrendingDown, LogOut, Tag,
+  Plus, Pencil, Trash2, TrendingDown, LogOut, Tag, Settings,
   X, ChevronLeft, ChevronRight, Wallet, LayoutGrid
 } from 'lucide-react'
 
@@ -340,6 +341,13 @@ export default function DashboardPage() {
             <span className="text-sm text-gray-600 hidden sm:block">
               Hi, <strong>{user?.name}</strong>
             </span>
+            <Link
+              to="/settings"
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-primary-600 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:block">Settings</span>
+            </Link>
             <button
               onClick={logout}
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600 transition-colors"

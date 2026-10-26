@@ -37,13 +37,28 @@ public class User implements UserDetails {
     private String email;
 
     @NotBlank
-    @Size(min = 6)
     @Column(nullable = false)
     private String password;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role = Role.USER;
+
+    /** Bumped on password change/reset and "log out all devices"; access tokens carry it and stop working when it changes. */
+    @Builder.Default
+    @Column(name = "token_version", nullable = false, columnDefinition = "integer default 0")
+    private int tokenVersion = 0;
+
+    @Builder.Default
+    @Column(name = "failed_attempts", nullable = false, columnDefinition = "integer default 0")
+    private int failedAttempts = 0;
+
+    @Column(name = "last_failed_at")
+    private LocalDateTime lastFailedAt;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

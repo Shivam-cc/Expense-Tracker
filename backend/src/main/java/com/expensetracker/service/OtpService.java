@@ -1,26 +1,37 @@
 package com.expensetracker.service;
 
 import com.expensetracker.exception.TooManyRequestsException;
+import com.expensetracker.model.OtpCode;
+import com.expensetracker.model.OtpPurpose;
+import com.expensetracker.repository.OtpCodeRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
 
 /**
- * Generates, stores, and verifies time-limited 6-digit OTPs (in-memory, single instance).
+ * Generates, stores, and verifies time-limited 6-digit OTPs. Codes live in the {@code otp_codes} table
+ * as an HMAC (keyed with the server secret), never in plaintext.
  * <p>
- * Abuse limits are tracked per email over a one-hour window and are NOT reset by requesting
+ * Abuse limits are tracked per (email, purpose) over a one-hour window and are NOT reset by requesting
  * a new code, so resending cannot be used to get unlimited guesses:
  * at most {@value #MAX_SENDS_PER_WINDOW} codes and {@value #MAX_FAILED_ATTEMPTS} wrong guesses
  * per window, and at least {@value #MIN_RESEND_SECONDS}s between sends.
  */
 @Service
+@RequiredArgsConstructor
 public class OtpService {
 
     static final int OTP_EXPIRY_SECONDS = 300;
@@ -29,46 +40,48 @@ public class OtpService {
     static final int MAX_FAILED_ATTEMPTS = 5;
     static final Duration WINDOW = Duration.ofHours(1);
 
-    private static final class State {
-        String otp;
-        Instant expiry;
-        Instant lastSent;
-        Instant windowStart;
-        int sendCount;
-        int attempts;
-    }
-
-    private final Map<String, State> store = new ConcurrentHashMap<>();
+    private final OtpCodeRepository otpCodeRepository;
     private final SecureRandom random = new SecureRandom();
 
+    @Value("${app.jwt.secret:}")
+    private String hmacSecret;
+
     /**
-     * Generates a new OTP for the email, replacing any previous one.
+     * Generates a new OTP for the email, replacing any previous one for the same purpose.
      * @throws TooManyRequestsException if the email is being throttled
      */
-    public String generateAndStore(String email) {
+    @Transactional
+    public String generateAndStore(String email, OtpPurpose purpose) {
         String key = normalize(email);
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
         String otp = String.format("%06d", random.nextInt(1_000_000));
 
-        // compute() makes the check-and-update atomic per email
-        store.compute(key, (k, state) -> {
-            if (state == null || now.isAfter(state.windowStart.plus(WINDOW))) {
-                state = new State();
-                state.windowStart = now;
-            }
-            if (state.lastSent != null && now.isBefore(state.lastSent.plusSeconds(MIN_RESEND_SECONDS))) {
+        OtpCode row = otpCodeRepository.findForUpdate(key, purpose).orElse(null);
+        if (row == null) {
+            row = OtpCode.builder()
+                    .email(key)
+                    .purpose(purpose)
+                    .windowStart(now)
+                    .build();
+        } else if (now.isAfter(row.getWindowStart().plus(WINDOW))) {
+            row.setWindowStart(now);
+            row.setSendCount(0);
+            row.setAttempts(0);
+        } else {
+            if (now.isBefore(row.getLastSentAt().plusSeconds(MIN_RESEND_SECONDS))) {
                 throw new TooManyRequestsException(
                         "Please wait " + MIN_RESEND_SECONDS + " seconds before requesting another code.");
             }
-            if (state.sendCount >= MAX_SENDS_PER_WINDOW) {
+            if (row.getSendCount() >= MAX_SENDS_PER_WINDOW) {
                 throw new TooManyRequestsException("Too many verification codes requested. Try again later.");
             }
-            state.otp = otp;
-            state.expiry = now.plusSeconds(OTP_EXPIRY_SECONDS);
-            state.lastSent = now;
-            state.sendCount++;
-            return state;
-        });
+        }
+
+        row.setCodeHash(hash(key, purpose, otp));
+        row.setExpiresAt(now.plusSeconds(OTP_EXPIRY_SECONDS));
+        row.setLastSentAt(now);
+        row.setSendCount(row.getSendCount() + 1);
+        otpCodeRepository.save(row);
         return otp;
     }
 
@@ -76,34 +89,56 @@ public class OtpService {
      * Verifies the OTP. Returns {@code true} and consumes it if valid.
      * @throws TooManyRequestsException once the failed-attempt budget for the window is spent
      */
-    public boolean verify(String email, String otp) {
+    // REQUIRES_NEW: the failed-attempt counter must persist even if the caller's transaction rolls back on the error it throws.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean verify(String email, OtpPurpose purpose, String otp) {
         String key = normalize(email);
-        boolean[] result = {false};
+        OtpCode row = otpCodeRepository.findForUpdate(key, purpose).orElse(null);
+        if (row == null) return false;
 
-        store.computeIfPresent(key, (k, state) -> {
-            Instant now = Instant.now();
-            if (now.isAfter(state.windowStart.plus(WINDOW))) return null;
-            if (state.attempts >= MAX_FAILED_ATTEMPTS) {
-                throw new TooManyRequestsException("Too many incorrect attempts. Please try again later.");
-            }
-            if (now.isAfter(state.expiry)) return state;
+        LocalDateTime now = LocalDateTime.now();
+        if (now.isAfter(row.getWindowStart().plus(WINDOW))) {
+            otpCodeRepository.delete(row);
+            return false;
+        }
+        if (row.getAttempts() >= MAX_FAILED_ATTEMPTS) {
+            throw new TooManyRequestsException("Too many incorrect attempts. Please try again later.");
+        }
+        if (now.isAfter(row.getExpiresAt())) return false;
 
-            if (otp != null && MessageDigest.isEqual(
-                    state.otp.getBytes(StandardCharsets.UTF_8), otp.getBytes(StandardCharsets.UTF_8))) {
-                result[0] = true;
-                return null;
-            }
+        boolean match = otp != null && MessageDigest.isEqual(
+                hash(key, purpose, otp).getBytes(StandardCharsets.UTF_8),
+                row.getCodeHash().getBytes(StandardCharsets.UTF_8));
+        if (match) {
+            otpCodeRepository.delete(row);
+            return true;
+        }
 
-            state.attempts++;
-            return state;
-        });
-        return result[0];
+        row.setAttempts(row.getAttempts() + 1);
+        otpCodeRepository.save(row);
+        return false;
+    }
+
+    @Transactional
+    public void deleteAllForEmail(String email) {
+        otpCodeRepository.deleteByEmail(normalize(email));
     }
 
     @Scheduled(fixedDelay = 300_000L)
-    void evictExpired() {
-        Instant now = Instant.now();
-        store.values().removeIf(s -> now.isAfter(s.windowStart.plus(WINDOW)));
+    @Transactional
+    public void evictExpired() {
+        otpCodeRepository.deleteByWindowStartBefore(LocalDateTime.now().minus(WINDOW));
+    }
+
+    private String hash(String email, OtpPurpose purpose, String otp) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(hmacSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal(("otp|" + purpose + "|" + email + "|" + otp).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HMAC unavailable", e);
+        }
     }
 
     private static String normalize(String email) {

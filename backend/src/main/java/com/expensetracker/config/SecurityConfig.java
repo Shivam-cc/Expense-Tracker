@@ -29,6 +29,8 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
@@ -38,7 +40,7 @@ public class SecurityConfig {
 
     /**
      * Registers a CorsFilter at HIGHEST_PRECEDENCE so CORS headers are attached
-     * to EVERY response Ã¢â‚¬â€ including 401/403/500 from Spring Security.
+     * to EVERY response ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â including 401/403/500 from Spring Security.
      * Without this, the browser sees a CORS error instead of the real error message.
      */
     @Bean
@@ -62,6 +64,10 @@ public class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -80,9 +86,9 @@ public class SecurityConfig {
                 .toList();
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization"));
-        config.setAllowCredentials(true);
+        // Bearer tokens in the Authorization header, no cookies: credentialed CORS is not needed.
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -21,9 +21,13 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
     List<Expense> findByUserIdAndCategoryId(Long userId, Long categoryId);
 
+    @Modifying
+    @Query("DELETE FROM Expense e WHERE e.user.id = :userId")
+    int deleteByUserId(@Param("userId") Long userId);
+
     Optional<Expense> findByIdAndUserId(Long id, Long userId);
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Modifying(flushAutomatically = true)
     // Not scoped by user: rows pointing at someone else's category (possible before ownership checks existed) would break the FK too.
     @Query("UPDATE Expense e SET e.category = null WHERE e.category.id = :categoryId")
     int clearCategory(@Param("categoryId") Long categoryId);
