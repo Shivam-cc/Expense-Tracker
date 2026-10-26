@@ -274,7 +274,7 @@ export default function DashboardPage() {
     try {
       const data = await categoriesApi.list()
       setCategories(data)
-    } catch (_) {}
+    } catch { /* keep showing the last loaded data */ }
   }, [])
 
   // Load expenses
@@ -285,7 +285,7 @@ export default function DashboardPage() {
       setExpenses(data.content)
       setTotalElements(data.totalElements)
       setPage(p)
-    } catch (_) {}
+    } catch { /* keep showing the last loaded data */ }
     setLoadingExpenses(false)
   }, [])
 
@@ -294,14 +294,17 @@ export default function DashboardPage() {
     try {
       const data = await expensesApi.summary(firstOfMonth(), today())
       setSummary(data)
-    } catch (_) {}
+    } catch { /* keep showing the last loaded data */ }
   }, [])
 
+  // Initial data load; the loaders set loading state before fetching.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadCategories()
     loadExpenses(0)
     loadSummary()
   }, [loadCategories, loadExpenses, loadSummary])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleDeleteExpense = (exp) => {
     setConfirm({

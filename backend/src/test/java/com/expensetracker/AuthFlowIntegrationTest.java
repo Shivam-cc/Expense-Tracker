@@ -27,6 +27,25 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void requestingAnotherCodeStraightAwayIsThrottled() throws Exception {
+        String email = uniqueEmail();
+        send(jsonPost("/api/auth/send-otp", Map.of("name", "Someone", "email", email)), 200);
+
+        JsonNode body = send(jsonPost("/api/auth/send-otp", Map.of("name", "Someone", "email", email)), 429);
+        assertThat(body.get("status").asInt()).isEqualTo(429);
+    }
+
+    @Test
+    void registeringAnAlreadyRegisteredEmailWithAValidCodeConflicts() throws Exception {
+        String email = uniqueEmail();
+        register(email, PASSWORD);
+
+        JsonNode otp = send(jsonPost("/api/auth/send-otp", Map.of("name", "Dup", "email", email)), 200);
+        send(jsonPost("/api/auth/register", Map.of(
+                "name", "Dup", "email", email, "password", PASSWORD, "otp", otp.get("devOtp").asText())), 409);
+    }
+
+    @Test
     void registerWithWrongOtpIsRejected() throws Exception {
         String email = uniqueEmail();
         send(jsonPost("/api/auth/send-otp", Map.of("name", "Test User", "email", email)), 200);

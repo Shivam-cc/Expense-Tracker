@@ -26,7 +26,7 @@ export default function RegisterPage() {
   const [devOtp, setDevOtp] = useState(null)  // only set locally when backend returns it
   const [countdown, setCountdown] = useState(300) // 5-min expiry
   const [resendCooldown, setResendCooldown] = useState(30)
-  const [canResend, setCanResend] = useState(false)
+  const canResend = resendCooldown <= 0
 
   // ── shared ────────────────────────────────────────────────────────────────
   const [error, setError] = useState('')
@@ -42,7 +42,6 @@ export default function RegisterPage() {
   // Resend cooldown
   useEffect(() => {
     if (step !== 2 || canResend) return
-    if (resendCooldown <= 0) { setCanResend(true); return }
     const t = setInterval(() => setResendCooldown((c) => c - 1), 1000)
     return () => clearInterval(t)
   }, [step, resendCooldown, canResend])
@@ -65,7 +64,6 @@ export default function RegisterPage() {
       setStep(2)
       setCountdown(300)
       setResendCooldown(30)
-      setCanResend(false)
       setOtp('')
     } catch (err) {
       setError(err.message || 'Failed to send code. Try again.')
@@ -98,7 +96,6 @@ export default function RegisterPage() {
       if (res.devOtp) setDevOtp(res.devOtp)
       setCountdown(300)
       setResendCooldown(30)
-      setCanResend(false)
       setOtp('')
     } catch (err) {
       setError(err.message || 'Failed to resend code.')
