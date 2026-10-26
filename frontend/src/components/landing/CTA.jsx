@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { ArrowRight, Sparkles } from 'lucide-react'
 
 export default function CTA() {
@@ -21,25 +22,25 @@ export default function CTA() {
           <div className="relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full border border-white/20 mb-6">
               <Sparkles className="w-4 h-4 text-yellow-300" />
-              <span className="text-sm font-medium text-white/90">Free forever for personal use</span>
+              <span className="text-sm font-medium text-white/90">Free to use</span>
             </div>
 
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
-              Ready to Master Your Finances?
+              Ready to See Where Your Money Goes?
             </h2>
 
             <p className="text-lg text-primary-100 mb-8 max-w-xl mx-auto">
-              Join 50,000+ users who have already taken control of their spending. No credit card required.
+              Create an account in a minute and log your first expense. No credit card required.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="group px-8 py-4 bg-white text-primary-700 font-bold rounded-xl hover:bg-primary-50 transition-all shadow-lg flex items-center justify-center gap-2">
+              <Link to="/register" className="group px-8 py-4 bg-white text-primary-700 font-bold rounded-xl hover:bg-primary-50 transition-all shadow-lg flex items-center justify-center gap-2">
                 Get Started — It's Free
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
-              <button className="px-8 py-4 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-all">
-                Schedule a Demo
-              </button>
+              </Link>
+              <Link to="/login" className="px-8 py-4 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-all">
+                Sign In
+              </Link>
             </div>
           </div>
         </motion.div>

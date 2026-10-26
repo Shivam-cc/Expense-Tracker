@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: 'ExpenseFlow - Smart Expense Tracker',
         short_name: 'ExpenseFlow',
-        description: 'Track your expenses, manage budgets, and take control of your finances.',
+        description: 'Log expenses, organise them with custom categories, see monthly summaries and charts, and export to CSV.',
         theme_color: '#2563eb',
         background_color: '#ffffff',
         display: 'standalone',

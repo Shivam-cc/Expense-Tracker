@@ -207,6 +207,12 @@ export default function RegisterPage() {
                   </button>
                 </div>
               </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                By creating an account you agree to the{' '}
+                <Link to="/terms" target="_blank" className="text-blue-600 hover:text-blue-700 underline">Terms</Link>{' '}
+                and{' '}
+                <Link to="/privacy" target="_blank" className="text-blue-600 hover:text-blue-700 underline">Privacy Policy</Link>.
+              </p>
               <button
                 type="submit"
                 disabled={loading}

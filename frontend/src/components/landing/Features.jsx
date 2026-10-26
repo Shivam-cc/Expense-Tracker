@@ -1,55 +1,49 @@
 import { motion } from 'framer-motion'
-import { 
-  BarChart3, 
-  Shield, 
-  Zap, 
-  Bell, 
-  Tags, 
-  Smartphone 
+import {
+  BarChart3,
+  ShieldCheck,
+  Receipt,
+  Search,
+  Tags,
+  Smartphone,
 } from 'lucide-react'
 
 const features = [
   {
-    icon: BarChart3,
-    title: 'Visual Analytics',
-    description: 'Beautiful charts and graphs that make understanding your spending patterns effortless.',
-    color: 'from-primary-500 to-primary-600',
-    bgColor: 'bg-primary-50',
-  },
-  {
-    icon: Zap,
-    title: 'Instant Tracking',
-    description: 'Add expenses in seconds with smart categorization and receipt scanning.',
-    color: 'from-yellow-500 to-orange-500',
+    icon: Receipt,
+    title: 'Expenses with Notes',
+    description: 'Add, edit, and delete expenses with a description, date, amount, and optional notes. Track in your own currency.',
     bgColor: 'bg-yellow-50',
-  },
-  {
-    icon: Shield,
-    title: 'Bank-Level Security',
-    description: 'Your financial data is encrypted and protected with enterprise-grade security.',
-    color: 'from-accent-500 to-accent-600',
-    bgColor: 'bg-accent-50',
-  },
-  {
-    icon: Bell,
-    title: 'Smart Alerts',
-    description: 'Get notified when you\'re approaching budget limits or unusual spending detected.',
-    color: 'from-red-500 to-pink-500',
-    bgColor: 'bg-red-50',
   },
   {
     icon: Tags,
     title: 'Custom Categories',
-    description: 'Organize expenses your way with fully customizable tags and categories.',
-    color: 'from-purple-500 to-indigo-500',
+    description: 'Create your own categories and give each one an icon and a colour so your spending is easy to scan.',
     bgColor: 'bg-purple-50',
   },
   {
+    icon: BarChart3,
+    title: 'Summaries & Charts',
+    description: 'See your monthly total and a spending-by-category breakdown, so you can spot where the money goes.',
+    bgColor: 'bg-primary-50',
+  },
+  {
+    icon: Search,
+    title: 'Search, Filter & Export',
+    description: 'Search by description, filter by date range or category, and export your expenses to CSV any time.',
+    bgColor: 'bg-red-50',
+  },
+  {
     icon: Smartphone,
-    title: 'Cross-Platform',
-    description: 'Access your finances anywhere — web, mobile, and tablet perfectly synced.',
-    color: 'from-cyan-500 to-blue-500',
+    title: 'Installable App',
+    description: 'Install ExpenseFlow from your browser as a PWA on mobile or desktop for quick, app-like access.',
     bgColor: 'bg-cyan-50',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Secure by Default',
+    description: 'BCrypt-hashed passwords, email verification with a one-time code, and HTTPS everywhere.',
+    bgColor: 'bg-accent-50',
   },
 ]
 
@@ -81,10 +75,10 @@ export default function Features() {
         >
           <span className="text-sm font-semibold text-primary-600 uppercase tracking-wider">Features</span>
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mt-3 mb-4">
-            Everything You Need to Manage Money
+            What You Can Do Today
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Powerful features designed to give you complete control over your finances with minimal effort.
+            A focused set of tools for recording and understanding your spending.
           </p>
         </motion.div>
 
@@ -110,6 +104,11 @@ export default function Features() {
             </motion.div>
           ))}
         </motion.div>
+
+        <p className="text-center text-sm text-gray-500 mt-10">
+          <span className="inline-block px-2 py-0.5 mr-2 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">Coming soon</span>
+          Budgets are on our roadmap. They are not available yet.
+        </p>
       </div>
     </section>
   )
