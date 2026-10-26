@@ -121,6 +121,36 @@ async function request(path, options = {}, isRetry = false) {
   return res.json()
 }
 
+// Same auth rules as request(), but for binary responses (CSV export). Returns { blob, filename }.
+async function requestBlob(path, isRetry = false) {
+  const token = session.getAccessToken()
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+
+  if (res.status === 401) {
+    if (!isRetry && session.getRefreshToken()) {
+      try {
+        await refreshAccessToken()
+        return requestBlob(path, true)
+      } catch {
+        // fall through to sign-out
+      }
+    }
+    session.clear()
+    onAuthFailure()
+    throw new Error('Your session has expired. Please sign in again.')
+  }
+
+  if (!res.ok) throw new Error(await readError(res))
+  const disposition = res.headers.get('content-disposition') || ''
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+  return {
+    blob: await res.blob(),
+    filename: match ? decodeURIComponent(match[1]) : 'expenses.csv',
+  }
+}
+
 const json = (method, data) => ({ method, body: JSON.stringify(data) })
 
 export const authApi = {
@@ -150,6 +180,11 @@ export const expensesApi = {
   delete: (id) => request(`/expenses/${id}`, { method: 'DELETE' }),
   summary: (startDate, endDate) =>
     request(`/expenses/summary?startDate=${startDate}&endDate=${endDate}`),
+  // Bearer auth means a plain <a href> can't be used, so the CSV is fetched as a blob.
+  export: (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return requestBlob(`/expenses/export?${qs}`)
+  },
 }
 
 export const categoriesApi = {

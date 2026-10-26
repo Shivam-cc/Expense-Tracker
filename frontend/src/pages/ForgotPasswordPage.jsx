@@ -92,7 +92,7 @@ export default function ForgotPasswordPage() {
                 disabled={loading}
                 className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? 'Sending codeÃ¢â‚¬Â¦' : 'Send reset code'}
+                {loading ? 'Sending code…' : 'Send reset code'}
               </button>
             </form>
           )}
@@ -135,7 +135,7 @@ export default function ForgotPasswordPage() {
                 disabled={loading || otp.length < 6}
                 className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? 'UpdatingÃ¢â‚¬Â¦' : 'Reset password'}
+                {loading ? 'Updating…' : 'Reset password'}
               </button>
               <div className="flex items-center justify-between text-sm pt-1">
                 <button

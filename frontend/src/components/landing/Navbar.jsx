@@ -3,6 +3,12 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Menu, X, Wallet } from 'lucide-react'
 
+const navLinks = [
+  { href: '#features', label: 'Features' },
+  { href: '#how-it-works', label: 'How It Works' },
+  { href: '#why', label: 'Why ExpenseFlow' },
+]
+
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -20,9 +26,9 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-gray-600 hover:text-primary-600 transition-colors font-medium">Features</a>
-            <a href="#how-it-works" className="text-gray-600 hover:text-primary-600 transition-colors font-medium">How It Works</a>
-            <a href="#testimonials" className="text-gray-600 hover:text-primary-600 transition-colors font-medium">Testimonials</a>
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} className="text-gray-600 hover:text-primary-600 transition-colors font-medium">{l.label}</a>
+            ))}
           </div>
 
           {/* CTA Buttons */}
@@ -39,6 +45,8 @@ export default function Navbar() {
           <button
             className="md:hidden p-2 rounded-lg hover:bg-gray-100"
             onClick={() => setIsOpen(!isOpen)}
+            aria-label={isOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isOpen}
           >
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -52,12 +60,19 @@ export default function Navbar() {
             className="md:hidden py-4 border-t border-gray-100"
           >
             <div className="flex flex-col gap-3">
-              <a href="#features" className="px-3 py-2 text-gray-600 hover:text-primary-600 font-medium">Features</a>
-              <a href="#how-it-works" className="px-3 py-2 text-gray-600 hover:text-primary-600 font-medium">How It Works</a>
-              <a href="#testimonials" className="px-3 py-2 text-gray-600 hover:text-primary-600 font-medium">Testimonials</a>
+              {navLinks.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => setIsOpen(false)}
+                  className="px-3 py-2 text-gray-600 hover:text-primary-600 font-medium"
+                >
+                  {l.label}
+                </a>
+              ))}
               <div className="flex flex-col gap-2 pt-3 border-t border-gray-100">
-                <button className="px-4 py-2 text-gray-700 font-medium">Sign In</button>
-                <button className="px-5 py-2.5 bg-primary-600 text-white font-medium rounded-lg">Get Started Free</button>
+                <Link to="/login" className="px-4 py-2 text-center text-gray-700 font-medium">Sign In</Link>
+                <Link to="/register" className="px-5 py-2.5 text-center bg-primary-600 text-white font-medium rounded-lg">Get Started Free</Link>
               </div>
             </div>
           </motion.div>

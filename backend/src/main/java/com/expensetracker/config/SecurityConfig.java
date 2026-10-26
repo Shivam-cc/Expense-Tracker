@@ -43,7 +43,7 @@ public class SecurityConfig {
 
     /**
      * Registers a CorsFilter at HIGHEST_PRECEDENCE so CORS headers are attached
-     * to EVERY response ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â including 401/403/500 from Spring Security.
+     * to EVERY response - including 401/403/500 from Spring Security.
      * Without this, the browser sees a CORS error instead of the real error message.
      */
     @Bean
@@ -62,6 +62,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     auth.requestMatchers("/api/auth/**").permitAll();
+                    auth.requestMatchers("/actuator/health/**", "/actuator/info").permitAll();
                     if (h2ConsoleEnabled) {
                         auth.requestMatchers("/h2-console/**").permitAll();
                     }
@@ -94,7 +95,7 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         // Bearer tokens in the Authorization header, no cookies: credentialed CORS is not needed.
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        config.setExposedHeaders(List.of("Content-Disposition")); // CSV export filename
+        config.setExposedHeaders(List.of("Content-Disposition", "X-Request-Id")); // CSV filename, request ID for support
         config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 

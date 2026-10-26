@@ -1,30 +1,30 @@
 import { motion } from 'framer-motion'
-import { UserPlus, Receipt, LineChart, Target } from 'lucide-react'
+import { UserPlus, Receipt, Tags, LineChart } from 'lucide-react'
 
 const steps = [
   {
     icon: UserPlus,
     step: '01',
     title: 'Create Account',
-    description: 'Sign up in seconds with your email or Google account. No credit card required.',
+    description: 'Sign up with your email and confirm it with a 6-digit code we send you.',
   },
   {
     icon: Receipt,
     step: '02',
     title: 'Add Expenses',
-    description: 'Log your daily expenses manually or connect your bank for automatic tracking.',
+    description: 'Log each expense with an amount, date, and optional notes, in just a few taps.',
+  },
+  {
+    icon: Tags,
+    step: '03',
+    title: 'Organise',
+    description: 'Group expenses into your own categories, each with an icon and colour.',
   },
   {
     icon: LineChart,
-    step: '03',
-    title: 'View Insights',
-    description: 'Get personalized insights and visual reports about your spending habits.',
-  },
-  {
-    icon: Target,
     step: '04',
-    title: 'Hit Your Goals',
-    description: 'Set savings goals and budgets, then watch as you achieve financial freedom.',
+    title: 'Review & Export',
+    description: 'Check monthly summaries and charts, filter by date or category, and export to CSV.',
   },
 ]
 
@@ -45,7 +45,7 @@ export default function HowItWorks() {
             Get Started in 4 Simple Steps
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            From sign-up to financial clarity in minutes. Here's how easy it is.
+            From sign-up to your first summary in a few minutes.
           </p>
         </motion.div>
 

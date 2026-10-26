@@ -45,12 +45,12 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private Role role = Role.USER;
 
-    /** Bumped on password change/reset and "log out all devices"; access tokens carry it and stop working when it changes. */
     /** ISO 4217 code used to format amounts for this user. */
     @Builder.Default
     @Column(nullable = false, length = 3)
     private String currency = "INR";
 
+    /** Bumped on password change/reset and "log out all devices"; access tokens carry it and stop working when it changes. */
     @Builder.Default
     @Column(name = "token_version", nullable = false)
     private int tokenVersion = 0;

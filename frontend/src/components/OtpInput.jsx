@@ -50,7 +50,7 @@ export default function OtpInput({ value = '', onChange, disabled = false }) {
   }
 
   return (
-    <div className="flex gap-3 justify-center">
+    <div className="flex gap-3 justify-center" role="group" aria-label="6-digit verification code">
       {Array.from({ length: 6 }).map((_, i) => (
         <input
           key={i}
@@ -58,6 +58,8 @@ export default function OtpInput({ value = '', onChange, disabled = false }) {
           type="text"
           inputMode="numeric"
           maxLength={1}
+          aria-label={`Digit ${i + 1} of 6`}
+          autoComplete={i === 0 ? 'one-time-code' : 'off'}
           value={digits[i].trim()}
           onChange={(e) => handleChange(e, i)}
           onKeyDown={(e) => handleKeyDown(e, i)}
@@ -65,7 +67,7 @@ export default function OtpInput({ value = '', onChange, disabled = false }) {
           onFocus={(e) => e.target.select()}
           disabled={disabled}
           className="w-11 h-12 text-center text-xl font-bold border-2 border-gray-300 rounded-xl
-                     focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                     focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-200
                      disabled:bg-gray-50 disabled:text-gray-400
                      transition-colors"
         />
