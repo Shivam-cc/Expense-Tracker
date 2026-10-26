@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { reportError } from '../utils/errorTracking'
 
 export default class ErrorBoundary extends Component {
   state = { error: null }
@@ -10,6 +11,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('Unhandled UI error:', error, info.componentStack)
+    reportError(error, { componentStack: info.componentStack })
   }
 
   render() {
