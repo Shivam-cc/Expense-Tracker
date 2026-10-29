@@ -35,9 +35,6 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
-    @Value("${spring.h2.console.enabled:false}")
-    private boolean h2ConsoleEnabled;
-
     @Value("${springdoc.api-docs.enabled:false}")
     private boolean apiDocsEnabled;
 
@@ -63,9 +60,6 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     auth.requestMatchers("/api/auth/**").permitAll();
                     auth.requestMatchers("/actuator/health/**", "/actuator/info").permitAll();
-                    if (h2ConsoleEnabled) {
-                        auth.requestMatchers("/h2-console/**").permitAll();
-                    }
                     if (apiDocsEnabled) {
                         auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
                     }

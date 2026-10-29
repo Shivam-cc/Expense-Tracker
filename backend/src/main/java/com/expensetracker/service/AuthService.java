@@ -99,7 +99,7 @@ public class AuthService {
                 .build();
 
         try {
-            userRepository.saveAndFlush(user);
+            userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
             // Concurrent registration won the unique-email race
             throw new ConflictException("Email already registered");

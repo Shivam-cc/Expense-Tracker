@@ -17,12 +17,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Runs against the real application context on in-memory H2 (local profile). The local profile
+ * Runs against the real application context on MongoDB in an isolated test database. The local profile
  * enables OTP dev mode, so {@code send-otp} returns the code in {@code devOtp}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-public abstract class IntegrationTestBase {
+public abstract class IntegrationTestBase extends MongoIntegrationSupport {
 
     protected static final String PASSWORD = "Passw0rd123";
 

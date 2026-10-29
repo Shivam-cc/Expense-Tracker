@@ -7,7 +7,7 @@ import { currencySymbol } from '../../utils/format'
 import { today } from '../../utils/date'
 import { fieldProps, inputCls, parseApiError } from '../../utils/forms'
 
-export default function ExpenseModal({ expense, categories, currency, onSave, onClose }) {
+export default function ExpenseModal({ expense, categories, categoriesLoading, categoriesError, currency, onSave, onClose, onAddCategory }) {
   const toast = useToast()
   const uid = useId()
   const isEdit = Boolean(expense?.id)
@@ -92,12 +92,24 @@ export default function ExpenseModal({ expense, categories, currency, onSave, on
             name="categoryId" value={form.categoryId} onChange={handleChange}
             className={inputCls}
           >
-            <option value="">— None —</option>
+            <option value="">Uncategorized</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
             ))}
           </select>
+          {!categoriesLoading && (categoriesError || categories.length === 0) && (
+            <p className="mt-1 text-xs text-gray-500">
+              {categoriesError ? 'Categories could not be loaded.' : 'No categories yet.'}{' '}
+              <button
+                type="button" onClick={onAddCategory}
+                className="font-medium text-primary-600 hover:text-primary-700 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
+              >
+                Add a category
+              </button>
+            </p>
+          )}
         </Field>
+
         <Field id={id('notes')} label="Notes" error={fieldErrors.notes}>
           <textarea
             {...fieldProps(id('notes'), fieldErrors.notes)}

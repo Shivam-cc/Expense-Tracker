@@ -1,6 +1,7 @@
 package com.expensetracker.config;
 
 import com.expensetracker.exception.ApiException;
+import com.mongodb.MongoException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -66,12 +67,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Object> handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest request) {
+        if (isTransientMongoFailure(ex)) return handleRetryableDatabaseFailure(ex, request);
         log.warn("Data integrity violation on {}: {}", request.getRequestURI(), ex.getMostSpecificCause().getMessage());
         return build(HttpStatus.CONFLICT, "The request conflicts with existing data", request, null);
     }
 
+    private boolean isTransientMongoFailure(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof MongoException mongo && mongo.hasErrorLabel("TransientTransactionError")) return true;
+        }
+        return false;
+    }
+
+    private ResponseEntity<Object> handleRetryableDatabaseFailure(Exception ex, HttpServletRequest request) {
+        log.warn("Transient MongoDB transaction failure on {}", request.getRequestURI(), ex);
+        return build(HttpStatus.SERVICE_UNAVAILABLE, "Database is busy. Please retry the request.", request, null);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Object> handleUnexpected(Exception ex, HttpServletRequest request) {
+        if (isTransientMongoFailure(ex)) return handleRetryableDatabaseFailure(ex, request);
         log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request, null);
     }

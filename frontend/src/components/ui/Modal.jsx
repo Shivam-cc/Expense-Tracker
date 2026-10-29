@@ -7,6 +7,10 @@ const FOCUSABLE =
 
 const SIZES = { sm: 'max-w-sm', md: 'max-w-md' }
 
+// Open modals, innermost last. Only the top one handles Escape and Tab, so a dialog opened from another
+// dialog (e.g. Add Category from Add Expense) doesn't close or trap focus for the one underneath.
+const openModals = []
+
 /**
  * Accessible modal dialog: Escape and backdrop click close it (unless `dismissible` is false, e.g. while
  * saving), Tab is trapped inside, and focus returns to the previously focused element on close.
@@ -26,11 +30,15 @@ export default function Modal({ title, onClose, size = 'md', dismissible = true,
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    const token = {}
+    openModals.push(token)
+
     const focusables = () => Array.from(panel.querySelectorAll(FOCUSABLE))
     const initial = panel.querySelector('[data-autofocus]') || focusables()[0] || panel
     initial.focus()
 
     const onKeyDown = (e) => {
+      if (openModals[openModals.length - 1] !== token) return
       if (e.key === 'Escape') {
         if (stateRef.current.dismissible) {
           e.stopPropagation()
@@ -58,6 +66,7 @@ export default function Modal({ title, onClose, size = 'md', dismissible = true,
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      openModals.splice(openModals.indexOf(token), 1)
       document.body.style.overflow = previousOverflow
       if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) {
         previouslyFocused.focus()

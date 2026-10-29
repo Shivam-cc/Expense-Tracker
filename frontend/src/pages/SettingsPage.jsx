@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { userApi } from '../services/api'
 import { PASSWORD_HINT, validatePassword } from '../utils/password'
-import { ArrowLeft, TrendingDown, LogOut, Trash2, X } from 'lucide-react'
+import { LogOut, Trash2, X } from 'lucide-react'
+import Tabs from '../components/ui/Tabs'
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -20,14 +21,35 @@ function Notice({ notice }) {
   return <div className={`mb-4 p-3 border rounded-lg text-sm ${tone}`}>{notice.text}</div>
 }
 
-function Section({ title, description, children }) {
+function Section({ title, description, danger = false, children }) {
   return (
-    <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-      <h2 className="font-semibold text-gray-900">{title}</h2>
-      {description && <p className="text-sm text-gray-500 mt-1 mb-4">{description}</p>}
-      {!description && <div className="mb-4" />}
-      {children}
+    <section className={`bg-white rounded-xl shadow-sm border ${danger ? 'border-red-100' : 'border-gray-100'}`}>
+      <div className={`px-5 py-4 border-b ${danger ? 'border-red-100' : 'border-gray-100'}`}>
+        <h2 className={`font-semibold ${danger ? 'text-red-700' : 'text-gray-900'}`}>{title}</h2>
+        {description && <p className="text-sm text-gray-500 mt-0.5">{description}</p>}
+      </div>
+      <div className="p-5">{children}</div>
     </section>
+  )
+}
+
+function Field({ id, label, hint, className = '', children }) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      {children}
+      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+    </div>
+  )
+}
+
+// Text on the left, the action on the right (stacked on small screens).
+function ActionRow({ text, children }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <p className="text-sm text-gray-600 max-w-xl">{text}</p>
+      <div className="shrink-0">{children}</div>
+    </div>
   )
 }
 
@@ -54,34 +76,33 @@ function ProfileSection() {
   }
 
   return (
-    <Section title="Profile">
+    <Section title="Profile" description="How your name and money are shown across ExpenseFlow.">
       <Notice notice={notice} />
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+      <form onSubmit={handleSubmit} className="grid sm:grid-cols-2 gap-4">
+        <Field id="profile-name" label="Name">
           <input
+            id="profile-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required minLength={2} maxLength={50}
             className={inputCls}
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-          <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputCls}>
+        </Field>
+        <Field id="profile-currency" label="Currency">
+          <select id="profile-currency" value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputCls}>
             {[...new Set([user?.currency, ...CURRENCIES].filter(Boolean))].map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
+        </Field>
+        <Field id="profile-email" label="Email" hint="Changing your email address isn't supported yet." className="sm:col-span-2">
+          <input id="profile-email" value={user?.email || ''} disabled className={`${inputCls} bg-gray-50 text-gray-500`} />
+        </Field>
+        <div className="sm:col-span-2 flex justify-end">
+          <button type="submit" disabled={saving || (name.trim() === user?.name && currency === (user?.currency || 'INR'))} className={primaryBtn}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-          <input value={user?.email || ''} disabled className={`${inputCls} bg-gray-50 text-gray-500`} />
-          <p className="text-xs text-gray-400 mt-1">Changing your email address isn't supported yet.</p>
-        </div>
-        <button type="submit" disabled={saving || (name.trim() === user?.name && currency === (user?.currency || 'INR'))} className={primaryBtn}>
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
       </form>
     </Section>
   )
@@ -115,28 +136,29 @@ function PasswordSection() {
   }
 
   return (
-    <Section title="Change password">
+    <Section title="Change password" description="Other devices are signed out when you change it.">
       <Notice notice={notice} />
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Current password</label>
+      <form onSubmit={handleSubmit} className="grid sm:grid-cols-2 gap-4">
+        <Field id="current-password" label="Current password">
           <input
+            id="current-password"
             type="password" name="currentPassword" value={form.currentPassword}
             onChange={handleChange} required autoComplete="current-password" className={inputCls}
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">New password</label>
+        </Field>
+        <Field id="new-password" label="New password" hint={PASSWORD_HINT}>
           <input
+            id="new-password"
             type="password" name="newPassword" value={form.newPassword}
             onChange={handleChange} required minLength={8} maxLength={128}
             autoComplete="new-password" className={inputCls}
           />
-          <p className="text-xs text-gray-400 mt-1">{PASSWORD_HINT}</p>
+        </Field>
+        <div className="sm:col-span-2 flex justify-end">
+          <button type="submit" disabled={saving} className={primaryBtn}>
+            {saving ? 'Updating…' : 'Update password'}
+          </button>
         </div>
-        <button type="submit" disabled={saving} className={primaryBtn}>
-          {saving ? 'Updating…' : 'Update password'}
-        </button>
       </form>
     </Section>
   )
@@ -162,18 +184,17 @@ function SessionsSection() {
   }
 
   return (
-    <Section
-      title="Sessions"
-      description="Sign out of ExpenseFlow on every device, including this one."
-    >
+    <Section title="Sessions">
       <Notice notice={notice} />
-      <button
-        onClick={handleLogoutAll}
-        disabled={working}
-        className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 rounded-lg text-sm font-medium"
-      >
-        <LogOut className="w-4 h-4" /> {working ? 'Signing out…' : 'Log out all devices'}
-      </button>
+      <ActionRow text="Sign out of ExpenseFlow on every device, including this one.">
+        <button
+          onClick={handleLogoutAll}
+          disabled={working}
+          className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 rounded-lg text-sm font-medium"
+        >
+          <LogOut className="w-4 h-4" /> {working ? 'Signing out…' : 'Log out all devices'}
+        </button>
+      </ActionRow>
     </Section>
   )
 }
@@ -238,43 +259,46 @@ function DeleteAccountModal({ onClose }) {
   )
 }
 
+const TABS = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'security', label: 'Security' },
+  { id: 'danger', label: 'Danger zone' },
+]
+
 export default function SettingsPage() {
+  const [tab, setTab] = useState('profile')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
-              <TrendingDown className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-semibold text-gray-900">Settings</span>
-          </div>
-          <Link to="/dashboard" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-4 h-4" /> Back to dashboard
-          </Link>
-        </div>
-      </header>
+    <>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <p className="text-sm text-gray-500">Manage your profile, password, sessions and account.</p>
+      </div>
 
-      <main className="max-w-3xl mx-auto px-4 py-6">
-        <ProfileSection />
-        <PasswordSection />
-        <SessionsSection />
-        <Section
-          title="Delete account"
-          description="Permanently remove your account and all of your data."
-        >
-          <button
-            onClick={() => setConfirmingDelete(true)}
-            className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
-          >
-            <Trash2 className="w-4 h-4" /> Delete my account
-          </button>
-        </Section>
-      </main>
+      <Tabs tabs={TABS} value={tab} onChange={setTab} label="Settings sections">
+        {tab === 'profile' && <ProfileSection />}
+        {tab === 'security' && (
+          <div className="space-y-4">
+            <PasswordSection />
+            <SessionsSection />
+          </div>
+        )}
+        {tab === 'danger' && (
+          <Section title="Delete account" danger>
+            <ActionRow text="Permanently remove your account and all of your expenses and categories. This cannot be undone.">
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
+              >
+                <Trash2 className="w-4 h-4" /> Delete my account
+              </button>
+            </ActionRow>
+          </Section>
+        )}
+      </Tabs>
 
       {confirmingDelete && <DeleteAccountModal onClose={() => setConfirmingDelete(false)} />}
-    </div>
+    </>
   )
 }

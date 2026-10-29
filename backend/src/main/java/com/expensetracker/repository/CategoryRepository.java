@@ -1,23 +1,22 @@
 package com.expensetracker.repository;
 
 import com.expensetracker.model.Category;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.data.mongodb.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface CategoryRepository extends JpaRepository<Category, Long> {
+public interface CategoryRepository extends DocumentRepository<Category> {
+    @Query("{ 'user': ?0 }")
     List<Category> findByUserId(Long userId);
+    @Query("{ '$or': [ { 'user': ?0 }, { 'user': null } ] }")
     List<Category> findByUserIdOrUserIsNull(Long userId);
+    boolean existsByNameIgnoreCaseAndUserIsNull(String name);
 
-    @Modifying
-    @Query("DELETE FROM Category c WHERE c.user.id = :userId")
-    int deleteByUserId(@Param("userId") Long userId);
+    @Query(value = "{ 'user': ?0 }", delete = true)
+    long deleteByUserId(Long userId);
 
     /** A category the user may attach to an expense: their own, or a global (user-less) one. */
-    @Query("SELECT c FROM Category c WHERE c.id = :id AND (c.user IS NULL OR c.user.id = :userId)")
-    Optional<Category> findUsableById(@Param("id") Long id, @Param("userId") Long userId);
+    @Query("{ '_id': ?0, '$or': [ { 'user': null }, { 'user': ?1 } ] }")
+    Optional<Category> findUsableById(Long id, Long userId);
 }

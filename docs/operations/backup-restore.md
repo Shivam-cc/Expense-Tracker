@@ -1,108 +1,76 @@
-# Backup and restore
+# MongoDB backup and restore
 
-ExpenseFlow keeps all user data in a single PostgreSQL database hosted on Railway. This page covers the built-in
-Railway backups, a manual `pg_dump` / `pg_restore` procedure, a restore drill, and an optional scheduled GitHub
-Actions backup.
+ExpenseFlow stores users, categories, expenses, hashed OTPs, refresh tokens, and numeric ID counters in MongoDB.
+Persistence survives application restarts, but it does not replace backups.
 
-## 1. Railway Postgres backups
+## Production backups
 
-Railway offers volume backups for Postgres services (Project → Postgres service → **Backups** tab).
+Use an authenticated replica set with durable disks or MongoDB Atlas. Enable your provider's automated backups
+and test restoring them before relying on them. Never expose the unauthenticated local Docker service publicly.
+For a consistent snapshot while writes continue, prefer provider snapshots / point-in-time recovery.
+The database-scoped `mongodump` procedure below does not guarantee a single cross-collection point in time:
+pause application writes during a manual dump or schedule a maintenance window.
 
-- Enable a **daily** (and optionally weekly) schedule. Backup availability and retention depend on your Railway plan, so
-  check the current limits in the Railway docs before relying on them.
-- Backups live inside Railway. Treat them as the first line of defence, and keep an off-platform copy (section 4) for
-  account-level incidents such as a deleted project.
-- A Railway restore creates a new volume/deployment state. Verify the app against it before cutting traffic over.
+## Manual backup
 
-## 2. Manual backup with `pg_dump`
-
-You need a PostgreSQL client whose **major version is the same as or newer than the server** (`pg_dump --version`).
-
-Use the database's **public** connection string (Railway → Postgres → Variables → `DATABASE_PUBLIC_URL`). The
-internal `DATABASE_URL` only resolves inside Railway's private network.
-
-```bash
-export DATABASE_URL='postgresql://USER:PASSWORD@HOST:PORT/DBNAME'
-
-pg_dump --format=custom --no-owner --no-privileges \
-  --file "expenseflow-$(date -u +%Y%m%dT%H%M%SZ).dump" "$DATABASE_URL"
-
-# Sanity check: lists the contents without restoring anything
-pg_restore --list expenseflow-*.dump | head
-```
-
-PowerShell equivalent:
+Install MongoDB Database Tools compatible with your server. Supply the connection URI through your environment;
+it must include the application's database name (normally `expense_tracker`).
 
 ```powershell
-$env:DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:PORT/DBNAME'
-pg_dump --format=custom --no-owner --no-privileges --file "expenseflow-$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')).dump" $env:DATABASE_URL
+# Set MONGODB_URI using your secret manager or shell before running.
+$archive = "expenseflow-$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')).archive.gz"
+mongodump --uri="$env:MONGODB_URI" --gzip --archive="$archive"
+if ($LASTEXITCODE -ne 0) { throw "MongoDB backup failed" }
 ```
 
-Dumps contain personal and financial data. Store them encrypted (for example with `gpg --symmetric --cipher-algo AES256`)
-and never commit them.
+Back up the **entire database**, including `_sequences`. Restoring documents without their ID counters can
+cause future inserts to reuse existing numeric IDs.
+Dumps contain personal and financial data: encrypt them, restrict access, and never commit them.
 
-## 3. Restore with `pg_restore`
+## Restore drill
 
-**Always restore into an empty scratch database first**, never straight over production.
+Always restore into an empty **scratch database** first, never directly over production.
 
-```bash
-# Create a scratch database (local Docker example)
-docker run -d --name restore-test -e POSTGRES_PASSWORD=test -p 55432:5432 postgres:16
-createdb -h localhost -p 55432 -U postgres expenseflow_restore   # password: test
-
-# Restore
-pg_restore --no-owner --no-privileges --exit-on-error \
-  -h localhost -p 55432 -U postgres -d expenseflow_restore expenseflow-YYYYMMDDTHHMMSSZ.dump
+```powershell
+# RESTORE_MONGODB_URI must point to a scratch replica set / Atlas database.
+mongorestore --uri="$env:RESTORE_MONGODB_URI" --gzip --archive="expenseflow-TIMESTAMP.archive.gz" `
+  --nsFrom="expense_tracker.*" --nsTo="expense_tracker_restore.*" --stopOnError
+if ($LASTEXITCODE -ne 0) { throw "MongoDB restore failed" }
 ```
 
-To restore into the real production database after an incident:
+1. Compare document counts in `users`, `categories`, `expenses`, and `_sequences` with the source.
+2. Start the backend against the restored database (`MONGODB_URI` with database `expense_tracker_restore`).
+3. Check `/actuator/health`, sign in, list existing expenses, and create a new expense.
+4. Restart the backend and confirm the same records remain.
+5. Record the backup age, restore duration, and results.
+6. Remove only the scratch database and decrypted archives when the drill is complete.
 
-1. Put the app into maintenance (scale the backend service to zero, or stop the Railway deployment) so nothing writes
-   during the restore.
-2. Take a fresh `pg_dump` of the current state, even if it is damaged.
-3. Restore into an empty database (`--clean --if-exists` drops existing objects first, so use it deliberately):
-   ```bash
-   pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error -d "$DATABASE_URL" backup.dump
-   ```
-4. Start the backend, check `/actuator/health`, and sign in with a test account.
+For production recovery, stop application writes, take a fresh backup of the damaged database, restore into a
+new database, verify it, and then switch the backend URI. Do not overwrite the old database before verification.
 
-## 4. Optional: scheduled off-platform backup (GitHub Actions)
+## Optional encrypted GitHub Actions backups
 
-The workflow [`.github/workflows/db-backup.yml`](../../.github/workflows/db-backup.yml) dumps the database every Sunday
-at 03:00 UTC (and on demand via **Actions → Database backup → Run workflow**), encrypts it with GPG (AES-256), and
-uploads it as a workflow artifact kept for 30 days.
-
-Set these repository secrets (Settings → Secrets and variables → Actions):
+The [database backup workflow](../../.github/workflows/db-backup.yml) runs every Sunday at 03:00 UTC and on demand.
+Set repository secrets:
 
 | Secret | Value |
 | --- | --- |
-| `DATABASE_URL` | The Railway **public** Postgres URL (`DATABASE_PUBLIC_URL`) |
-| `BACKUP_PASSPHRASE` | A long random passphrase, stored in your password manager. Without it the backup cannot be decrypted |
+| `MONGODB_URI` | Reachable authenticated MongoDB URI including the application's database name |
+| `BACKUP_PASSPHRASE` | Long random encryption passphrase kept in your password manager |
 
-If either secret is missing, the job prints a notice and finishes successfully without doing anything.
+If either secret is missing, the workflow reports that it skipped the backup. It uses `mongodump` from the
+`mongo:8.0` image, encrypts the archive using GPG AES-256, and retains the artifact for 30 days.
+Allow the runner to reach the database using your network policy; do not open database access to the world
+just to enable backups. Prefer a private repository or upload backups to restricted storage.
+For live, transaction-consistent backups use provider snapshots instead of this database-scoped dump.
 
-Things to know:
+Decrypt a downloaded archive before restoring:
 
-- GitHub artifacts are visible to anyone who can read the repository. Even though the dump is encrypted, prefer a
-  **private repository** for this workflow, or change the last step to upload to storage you control (S3, Backblaze B2, etc.).
-- Set `PG_CLIENT_VERSION` in the workflow to at least the Postgres major version on Railway.
-- Decrypt a downloaded backup with:
-  ```bash
-  gpg --batch --pinentry-mode loopback --decrypt --output expenseflow.dump expenseflow-YYYYMMDDTHHMMSSZ.dump.gpg
-  ```
+```powershell
+gpg --decrypt --output expenseflow.archive.gz expenseflow-TIMESTAMP.archive.gz.gpg
+```
 
-## 5. Restore drill checklist
+## Local volume
 
-Run this at least once before launch and then every quarter. A backup that has never been restored is not a backup.
-
-- [ ] Download or create a recent backup (Railway backup or the encrypted artifact) and decrypt it.
-- [ ] Restore it into a scratch Postgres of the same major version (section 3).
-- [ ] Row counts for `users`, `categories`, and `expenses` look plausible compared to production.
-- [ ] Start the backend locally against the restored database (`SPRING_PROFILES_ACTIVE=prod`, see `backend/.env.example`).
-- [ ] `/actuator/health` returns `UP`, and signing in with a known account lists its expenses.
-- [ ] Record the date, backup age, time taken, and any problems below.
-- [ ] Delete the scratch database and any decrypted dump files.
-
-| Date | Backup used | Duration | Result / notes |
-| --- | --- | --- | --- |
-| _YYYY-MM-DD_ | | | |
+`docker compose down` retains the `mongodata` volume. `docker compose down -v` destroys it.
+Historical PostgreSQL/H2 SQL migrations are not used by MongoDB and are not an import mechanism.

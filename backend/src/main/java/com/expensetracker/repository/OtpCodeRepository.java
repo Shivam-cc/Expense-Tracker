@@ -2,27 +2,21 @@ package com.expensetracker.repository;
 
 import com.expensetracker.model.OtpCode;
 import com.expensetracker.model.OtpPurpose;
-import jakarta.persistence.LockModeType;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.repository.Query;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-public interface OtpCodeRepository extends JpaRepository<OtpCode, Long> {
+public interface OtpCodeRepository extends DocumentRepository<OtpCode> {
+    default Optional<OtpCode> findForUpdate(String email, OtpPurpose purpose) {
+        return findForUpdate(new org.springframework.data.mongodb.core.query.Query(
+                Criteria.where("email").is(email).and("purpose").is(purpose)));
+    }
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT o FROM OtpCode o WHERE o.email = :email AND o.purpose = :purpose")
-    Optional<OtpCode> findForUpdate(@Param("email") String email, @Param("purpose") OtpPurpose purpose);
+    @Query(value = "{ 'windowStart': { '$lt': ?0 } }", delete = true)
+    long deleteByWindowStartBefore(LocalDateTime cutoff);
 
-    @Modifying
-    @Query("DELETE FROM OtpCode o WHERE o.windowStart < :cutoff")
-    int deleteByWindowStartBefore(@Param("cutoff") LocalDateTime cutoff);
-
-    @Modifying
-    @Query("DELETE FROM OtpCode o WHERE o.email = :email")
-    int deleteByEmail(@Param("email") String email);
+    @Query(value = "{ 'email': ?0 }", delete = true)
+    long deleteByEmail(String email);
 }

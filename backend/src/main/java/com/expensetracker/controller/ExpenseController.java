@@ -64,11 +64,10 @@ public class ExpenseController {
             throw new BadRequestException("sortBy must be one of " + SORTABLE_FIELDS);
         }
         int clampedSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        Sort sort = direction.equalsIgnoreCase("asc")
-                ? Sort.by(sortBy).ascending()
-                : Sort.by(sortBy).descending();
-        // id as tie-breaker keeps page boundaries stable when many rows share a date
-        PageRequest pageRequest = PageRequest.of(page, clampedSize, sort.and(Sort.by("id").descending()));
+        Sort.Direction order = direction.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
+        // id as tie-breaker keeps page boundaries stable when many rows share a date. It follows the requested
+        // direction, so same-day expenses flip too (dates have no time part): newest first = latest added first.
+        PageRequest pageRequest = PageRequest.of(page, clampedSize, Sort.by(order, sortBy).and(Sort.by(order, "id")));
         return ResponseEntity.ok(expenseService.getUserExpenses(user, q, categoryId, startDate, endDate, pageRequest));
     }
 

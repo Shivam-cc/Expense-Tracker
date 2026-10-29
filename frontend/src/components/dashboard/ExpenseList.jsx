@@ -58,8 +58,7 @@ export default function ExpenseList({
             <li key={exp.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
-                  style={{ backgroundColor: cat?.color ? `${cat.color}22` : '#f3f4f6' }}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm flex-shrink-0"
                   aria-hidden="true"
                 >
                   {cat?.icon || '💸'}

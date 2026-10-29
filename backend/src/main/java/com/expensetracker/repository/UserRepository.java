@@ -1,23 +1,24 @@
 package com.expensetracker.repository;
 
 import com.expensetracker.model.User;
-import jakarta.persistence.LockModeType;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.data.mongodb.core.query.Criteria;
 
 import java.util.Optional;
 
-public interface UserRepository extends JpaRepository<User, Long> {
-    // LOWER() ensures case-insensitive lookup even if a mixed-case email slipped in
-    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
-    Optional<User> findByEmail(@Param("email") String email);
+public interface UserRepository extends DocumentRepository<User> {
+    Optional<User> findByEmailIgnoreCase(String email);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT u FROM User u WHERE u.id = :id")
-    Optional<User> findByIdForUpdate(@Param("id") Long id);
+    default Optional<User> findByEmail(String email) {
+        return findByEmailIgnoreCase(email);
+    }
 
-    @Query("SELECT COUNT(u) > 0 FROM User u WHERE LOWER(u.email) = LOWER(:email)")
-    boolean existsByEmail(@Param("email") String email);
+    default Optional<User> findByIdForUpdate(Long id) {
+        return findForUpdate(new org.springframework.data.mongodb.core.query.Query(Criteria.where("_id").is(id)));
+    }
+
+    boolean existsByEmailIgnoreCase(String email);
+
+    default boolean existsByEmail(String email) {
+        return existsByEmailIgnoreCase(email);
+    }
 }

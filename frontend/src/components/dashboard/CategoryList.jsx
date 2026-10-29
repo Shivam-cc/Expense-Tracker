@@ -34,38 +34,34 @@ export default function CategoryList({ categories, error, onRetry, onAdd, onEdit
     <ul className="divide-y divide-gray-50">
       {categories.map((cat) => (
         <li key={cat.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-base"
-              style={{ backgroundColor: cat.color ? `${cat.color}22` : '#f3f4f6' }}
-              aria-hidden="true"
-            >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0" aria-hidden="true">
               {cat.icon || '🏷️'}
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{cat.name}</p>
-              {cat.color && (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} aria-hidden="true" />
-                  <span className="text-xs text-gray-400">{cat.color}</span>
-                </div>
-              )}
+            <div className="flex items-center gap-2 min-w-0">
+              {cat.color && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} aria-hidden="true" />}
+              <p className="text-sm font-medium text-gray-900 truncate">{cat.name}</p>
+                {cat.global && (
+                  <span className="text-[11px] font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 flex-shrink-0">Default</span>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button" onClick={() => onEdit(cat)} aria-label={`Edit category ${cat.name}`}
-              className="p-1 rounded text-gray-400 hover:text-primary-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button
-              type="button" onClick={() => onDelete(cat)} aria-label={`Delete category ${cat.name}`}
-              className="p-1 rounded text-gray-400 hover:text-red-500 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
+            {!cat.global && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button" onClick={() => onEdit(cat)} aria-label={`Edit category ${cat.name}`}
+                className="p-1 rounded text-gray-400 hover:text-primary-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button
+                type="button" onClick={() => onDelete(cat)} aria-label={`Delete category ${cat.name}`}
+                className="p-1 rounded text-gray-400 hover:text-red-500 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            )}
         </li>
       ))}
     </ul>

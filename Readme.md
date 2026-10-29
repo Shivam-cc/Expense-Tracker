@@ -16,7 +16,7 @@ A full-stack expense tracking application built with **React 19** (frontend) and
 
 ### Backend
 - **Java 21** with Spring Boot 3.4
-- **Spring Data JPA** with Flyway migrations (PostgreSQL in production, H2 locally)
+- **Spring Data MongoDB** with persistent storage, indexes, and multi-document transactions
 - **Spring Security** with JWT (JJWT) and rotating refresh tokens
 - **SendGrid** Web API for email verification codes
 - **Spring Boot Actuator**, **Sentry** and **springdoc** OpenAPI docs
@@ -34,12 +34,12 @@ Expense-Tracker/
 │   │   │   ├── controller/ # REST controllers (auth, expenses, categories)
 │   │   │   ├── dto/        # Request and response objects
 │   │   │   ├── exception/  # API exceptions
-│   │   │   ├── model/      # JPA entities
+│   │   │   ├── model/      # MongoDB documents
 │   │   │   ├── repository/ # Spring Data repositories
 │   │   │   └── service/    # Business logic (auth, OTP, tokens, email, CSV export)
 │   │   ├── main/resources/
 │   │   │   ├── application*.properties
-│   │   │   └── db/migration/ # Flyway schema migrations
+│   │   │   └── db/migration/ # Historical SQL migrations (not executed by MongoDB)
 │   │   └── test/          # Unit and integration tests
 │   ├── Dockerfile
 │   ├── .env.example
@@ -65,24 +65,44 @@ Expense-Tracker/
 ### Prerequisites
 - Node.js 22 (CI uses 22; 20+ should work)
 - JDK 21, with `JAVA_HOME` pointing to it (the Maven wrapper is included)
-- PostgreSQL 16+ only for the `prod` profile. Local development uses an in-memory H2 database.
+- Docker Desktop for local MongoDB, or access to MongoDB Atlas / a MongoDB replica set.
+- MongoDB 8.0 is used by the local Docker stack. A standalone `mongod` is insufficient: authentication and account operations require transactions.
 
 ### Local Development
 Run the backend and frontend in two terminals.
+
+Start MongoDB once from the repository root:
+```powershell
+docker compose up -d --wait mongodb
+```
+MongoDB stores data in the `mongodata` named volume. Backend restarts, MongoDB restarts, and `docker compose down` preserve it.
+**Do not use `docker compose down -v`** unless you intend to delete the database.
+The local database has no authentication and is exposed only on `127.0.0.1`; do not deploy this local setup publicly.
 
 **Backend** (http://localhost:8080):
 ```bash
 cd backend
 ./mvnw spring-boot:run          # Windows: .\mvnw.cmd spring-boot:run
 ```
-The `local` profile is the default and needs no environment variables. It preconfigures H2, a dev-only JWT secret, and OTP dev mode, which logs verification codes at debug level instead of emailing them.
+The `local` profile is the default. It connects to `mongodb://localhost:27017/expense_tracker?replicaSet=rs0&directConnection=true`
+and preconfigures a dev-only JWT secret and OTP dev mode (verification codes returned in API responses).
+Override `MONGODB_URI` to use another replica set or Atlas; include the database name in the URI.
+Indexes and the 16 default categories are initialized idempotently at startup. The numeric API ID format is preserved.
 
 Useful local URLs:
 - `http://localhost:8080/actuator/health`: health check
 - `http://localhost:8080/swagger-ui.html`: API docs
-- `http://localhost:8080/h2-console`: H2 console (JDBC URL `jdbc:h2:mem:expense_tracker`, user `sa`, empty password)
+Browse the database with MongoDB Compass using the local connection URI above.
 
-Local data is in memory and resets when the backend restarts.
+Alternatively, run both MongoDB and the backend with `docker compose up --build -d`. This is a local development
+stack with development OTPs enabled, not a production deployment.
+
+### Existing data
+This switches persistence from H2/PostgreSQL to MongoDB; it does **not** import existing SQL records.
+Historical SQL migrations are retained only for reference and are no longer run.
+In-memory H2 data that was already lost on shutdown cannot be recovered. Back up any existing persistent SQL
+database before switching. MongoDB starts with a new database and seeded categories; existing SQL accounts must
+be registered again unless you arrange a separate data import.
 
 **Frontend** (http://localhost:5173):
 ```bash
@@ -95,6 +115,7 @@ The frontend calls `http://localhost:8080` by default. To use another backend, s
 ### Tests and Checks
 ```bash
 # Backend: compiles and runs all tests; JaCoCo report in backend/target/site/jacoco
+# Start MongoDB first: docker compose up -d --wait mongodb (from repository root)
 cd backend
 ./mvnw verify
 
@@ -105,12 +126,14 @@ npm test
 npm run build
 ```
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs the same checks, plus `npm audit`.
+Backend integration tests use a unique `expense_tracker_test_*` database, never the application's database.
+Set `TEST_MONGODB_URI` to test against a different replica set. Test databases can be removed after the run.
 
 ### Configuration
 Environment variables are documented in [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example).
 
 ### Deployment
-- **Backend (Railway):** `railway.toml` builds `backend/Dockerfile` and checks `/actuator/health`. Set `SPRING_PROFILES_ACTIVE=prod`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` (base64, at least 256 bits; generate with `openssl rand -base64 48`), and `CORS_ORIGINS` (your exact frontend origin). Optional: `SENDGRID_API_KEY`, `SENDGRID_FROM`, `SENTRY_DSN`.
+- **Backend (Railway):** `railway.toml` builds `backend/Dockerfile` and checks `/actuator/health`. Set `SPRING_PROFILES_ACTIVE=prod`, `MONGODB_URI` (authenticated Atlas or replica-set URI including the database name), `JWT_SECRET` (base64, at least 256 bits; generate with `openssl rand -base64 48`), and `CORS_ORIGINS` (your exact frontend origin). Optional: `SENDGRID_API_KEY`, `SENDGRID_FROM`, `SENTRY_DSN`. Configure database access controls, durable storage, and backups; see [backup and restore](docs/operations/backup-restore.md).
 - **Frontend (Vercel):** `frontend/vercel.json` handles SPA routing. Set `VITE_API_URL` to the backend's public URL. Optional: `VITE_SENTRY_DSN`.
 
 ## License

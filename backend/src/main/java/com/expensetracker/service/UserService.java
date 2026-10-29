@@ -14,8 +14,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Currency;
+import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class UserService {
     private final AccountLockService accountLockService;
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
+    private final PlatformTransactionManager transactionManager;
 
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(User principal) {
@@ -52,16 +56,14 @@ public class UserService {
      * Changes the password, invalidates every other session (token version bump + refresh revocation),
      * and returns a fresh session for the caller so this device stays signed in.
      */
-    @Transactional
     public AuthResponse changePassword(User principal, ChangePasswordRequest request) {
-        User user = load(principal);
-        requirePassword(user, request.getCurrentPassword());
-
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        user.setTokenVersion(user.getTokenVersion() + 1);
-        userRepository.save(user);
-        refreshTokenService.revokeAllForUser(user.getId());
-        return refreshTokenService.startSession(user);
+        return withVerifiedPassword(principal, request.getCurrentPassword(), user -> {
+            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            user.setTokenVersion(user.getTokenVersion() + 1);
+            userRepository.save(user);
+            refreshTokenService.revokeAllForUser(user.getId());
+            return refreshTokenService.startSession(user);
+        });
     }
 
     /** "Log out all devices": bumps the token version so access tokens die immediately, and revokes all refresh tokens. */
@@ -73,16 +75,15 @@ public class UserService {
         refreshTokenService.revokeAllForUser(user.getId());
     }
 
-    @Transactional
     public void deleteAccount(User principal, String password) {
-        User user = load(principal);
-        requirePassword(user, password);
-
-        expenseRepository.deleteByUserId(user.getId());
-        categoryRepository.deleteByUserId(user.getId());
-        refreshTokenService.deleteAllForUser(user.getId());
-        otpService.deleteAllForEmail(user.getEmail());
-        userRepository.delete(user);
+        withVerifiedPassword(principal, password, user -> {
+            expenseRepository.deleteByUserId(user.getId());
+            categoryRepository.deleteByUserId(user.getId());
+            refreshTokenService.deleteAllForUser(user.getId());
+            otpService.deleteAllForEmail(user.getEmail());
+            userRepository.delete(user);
+            return null;
+        });
     }
 
     private static String requireKnownCurrency(String code) {
@@ -97,6 +98,20 @@ public class UserService {
         if (!accountLockService.verifyPassword(user, rawPassword)) {
             throw new BadRequestException(WRONG_PASSWORD);
         }
+    }
+
+    private <T> T withVerifiedPassword(User principal, String password, Function<User, T> action) {
+        User verified = load(principal);
+        // Lockout counters commit independently, before the account transaction establishes its snapshot.
+        requirePassword(verified, password);
+        return new TransactionTemplate(transactionManager).execute(status -> {
+            User current = userRepository.findByIdForUpdate(principal.getId())
+                    .orElseThrow(() -> new NotFoundException("User not found"));
+            if (!current.getPassword().equals(verified.getPassword())) {
+                throw new BadRequestException(WRONG_PASSWORD);
+            }
+            return action.apply(current);
+        });
     }
 
     private User load(User principal) {

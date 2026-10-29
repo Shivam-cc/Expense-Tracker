@@ -115,21 +115,12 @@ export default function AppShell() {
       </a>
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className={`flex items-center gap-2 rounded-lg ${focusRing}`}>
-              <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
-                <TrendingDown className="w-4 h-4 text-white" aria-hidden="true" />
-              </div>
-              <span className="font-semibold text-gray-900">ExpenseFlow</span>
-            </Link>
-            <nav aria-label="Main" className="hidden md:flex items-center gap-1">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-                <NavLink key={to} to={to} className={navLinkCls}>
-                  <Icon className="w-4 h-4" aria-hidden="true" /> {label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
+          <Link to="/dashboard" className={`flex items-center gap-2 rounded-lg ${focusRing}`}>
+            <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
+              <TrendingDown className="w-4 h-4 text-white" aria-hidden="true" />
+            </div>
+            <span className="font-semibold text-gray-900">ExpenseFlow</span>
+          </Link>
 
           <div className="hidden md:block">
             <UserMenu user={user} onLogout={handleLogout} />

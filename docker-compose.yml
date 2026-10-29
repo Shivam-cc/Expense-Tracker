@@ -1,54 +1,47 @@
-# Local development stack: PostgreSQL + the backend built from backend/Dockerfile (prod profile).
-# The frontend is not containerised; run it with `cd frontend && npm run dev` (http://localhost:5173).
-#
-#   docker compose up --build
-#
-# Every ${VAR:-default} below can be overridden from your shell or a root-level .env file.
-# The defaults are for local use only; never reuse them for a deployed environment.
-
+# Local-only stack. MongoDB is unauthenticated and bound to loopback; use Atlas or a secured replica set in production.
+# Start just the database: docker compose up -d mongodb
+# Start the API too: docker compose up --build -d
 name: expenseflow
 
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: expensetracker
-      POSTGRES_USER: expensetracker
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-expensetracker}
+  mongodb:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
-      - "5432:5432"
+      - "127.0.0.1:27017:27017"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mongodata:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U expensetracker -d expensetracker"]
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { if (db.hello().isWritablePrimary) { quit(0); } if (!db.hello().setName) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}); } quit(1); } catch (e) { print(e); quit(1); }"
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 30
+      start_period: 5s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_PROFILES_ACTIVE: local
       PORT: "8080"
-      DB_URL: jdbc:postgresql://postgres:5432/expensetracker
-      DB_USERNAME: expensetracker
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-expensetracker}
-      # Base64 of a throwaway string; override with a real secret (see backend/.env.example).
+      MONGODB_URI: mongodb://mongodb:27017/expense_tracker?replicaSet=rs0&directConnection=true
       JWT_SECRET: ${JWT_SECRET:-ZXhwZW5zZWZsb3ctbG9jYWwtY29tcG9zZS1qd3Qtc2VjcmV0LW5vdC1mb3ItcHJvZHVjdGlvbi11c2U=}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
-      # true returns the verification code in the signup response, so no email provider is needed locally.
-      OTP_DEV_MODE: ${OTP_DEV_MODE:-true}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM: ${SENDGRID_FROM:-noreply@example.com}
       SENDGRID_FROM_NAME: ${SENDGRID_FROM_NAME:-ExpenseFlow}
       SENTRY_DSN: ${SENTRY_DSN:-}
 
 volumes:
-  pgdata:
+  mongodata:

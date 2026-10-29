@@ -1,12 +1,9 @@
 package com.expensetracker.repository;
 
-import com.expensetracker.model.Expense;
-import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.mongodb.core.query.Criteria;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.regex.Pattern;
 
 public final class ExpenseSpecifications {
 
@@ -16,34 +13,21 @@ public final class ExpenseSpecifications {
     private ExpenseSpecifications() {}
 
     /** Always scoped to the user; every other filter is optional. */
-    public static Specification<Expense> filter(
+    public static Criteria filter(
             Long userId, String query, Long categoryId, LocalDate startDate, LocalDate endDate) {
-        return (root, cq, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("user").get("id"), userId));
-
-            if (query != null && !query.isBlank()) {
-                String pattern = "%" + escapeLike(query.trim().toLowerCase()) + "%";
-                predicates.add(cb.or(
-                        cb.like(cb.lower(root.<String>get("description")), pattern, '\\'),
-                        cb.like(cb.lower(root.<String>get("notes")), pattern, '\\')));
-            }
-            if (categoryId != null) {
-                predicates.add(categoryId == UNCATEGORIZED
-                        ? cb.isNull(root.get("category"))
-                        : cb.equal(root.get("category").get("id"), categoryId));
-            }
-            if (startDate != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.<LocalDate>get("date"), startDate));
-            }
-            if (endDate != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.<LocalDate>get("date"), endDate));
-            }
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-    }
-
-    private static String escapeLike(String value) {
-        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        Criteria criteria = Criteria.where("user").is(userId);
+        if (query != null && !query.isBlank()) {
+            Pattern pattern = Pattern.compile(Pattern.quote(query.trim()), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            criteria.orOperator(Criteria.where("description").regex(pattern), Criteria.where("notes").regex(pattern));
+        }
+        if (categoryId != null) {
+            criteria.and("category").is(categoryId == UNCATEGORIZED ? null : categoryId);
+        }
+        if (startDate != null || endDate != null) {
+            Criteria date = criteria.and("date");
+            if (startDate != null) date.gte(startDate);
+            if (endDate != null) date.lte(endDate);
+        }
+        return criteria;
     }
 }

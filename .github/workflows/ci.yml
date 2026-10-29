@@ -29,7 +29,13 @@ jobs:
           cache: maven
 
       - name: Build, test and generate coverage
-        run: ./mvnw -B verify
+        run: |
+          docker compose -f ../docker-compose.yml up -d --wait mongodb
+          ./mvnw -B verify
+
+      - name: Stop test database
+        if: always()
+        run: docker compose -f ../docker-compose.yml down
 
       - name: Upload coverage report
         if: always()

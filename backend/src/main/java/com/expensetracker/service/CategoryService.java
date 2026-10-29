@@ -2,6 +2,7 @@ package com.expensetracker.service;
 
 import com.expensetracker.dto.CategoryRequest;
 import com.expensetracker.dto.CategoryResponse;
+import com.expensetracker.exception.ConflictException;
 import com.expensetracker.exception.ForbiddenException;
 import com.expensetracker.exception.NotFoundException;
 import com.expensetracker.model.Category;
@@ -25,6 +26,8 @@ public class CategoryService {
 
     @Transactional
     public CategoryResponse createCategory(CategoryRequest request, User user) {
+        ensureNameNotDefault(request.getName());
+
         Category category = Category.builder()
                 .name(request.getName())
                 .icon(request.getIcon())
@@ -46,6 +49,7 @@ public class CategoryService {
     @Transactional
     public CategoryResponse updateCategory(Long id, CategoryRequest request, User user) {
         Category category = findOwnedCategory(id, user);
+        ensureNameNotDefault(request.getName());
 
         category.setName(request.getName());
         category.setIcon(request.getIcon());
@@ -61,6 +65,13 @@ public class CategoryService {
 
         expenseRepository.clearCategory(category.getId());
         categoryRepository.delete(category);
+    }
+
+    /** Default category names are reserved so each name resolves to exactly one category in the UI. */
+    private void ensureNameNotDefault(String name) {
+        if (categoryRepository.existsByNameIgnoreCaseAndUserIsNull(name)) {
+            throw new ConflictException("A default category named \"" + name + "\" already exists");
+        }
     }
 
     /** Global categories (user == null) are read-only; other users' categories are reported as missing. */

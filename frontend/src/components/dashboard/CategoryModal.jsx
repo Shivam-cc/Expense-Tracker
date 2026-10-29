@@ -4,6 +4,7 @@ import Field from '../ui/Field'
 import { categoriesApi } from '../../services/api'
 import { useToast } from '../toast/toastContext'
 import { fieldProps, inputCls, parseApiError } from '../../utils/forms'
+import { CATEGORY_COLORS, CATEGORY_ICONS, DEFAULT_CATEGORY_COLOR, DEFAULT_CATEGORY_ICON } from '../../utils/categoryPresets'
 
 export default function CategoryModal({ category, onSave, onClose }) {
   const toast = useToast()
@@ -11,8 +12,8 @@ export default function CategoryModal({ category, onSave, onClose }) {
   const isEdit = Boolean(category?.id)
   const [form, setForm] = useState({
     name: category?.name || '',
-    icon: category?.icon || '',
-    color: category?.color || '#3b82f6',
+    icon: category?.icon || DEFAULT_CATEGORY_ICON,
+    color: category?.color || DEFAULT_CATEGORY_COLOR,
   })
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
@@ -60,23 +61,61 @@ export default function CategoryModal({ category, onSave, onClose }) {
             className={inputCls}
           />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field id={id('icon')} label="Icon (emoji)" error={fieldErrors.icon}>
+        <fieldset>
+          <legend className="text-sm font-medium text-gray-700 mb-2">Icon</legend>
+          <div className="grid grid-cols-8 gap-1.5">
+            {CATEGORY_ICONS.map(({ emoji, label }) => {
+              const selected = form.icon === emoji
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, icon: emoji }))}
+                  aria-label={label}
+                  aria-pressed={selected}
+                  title={label}
+                  className={`h-9 rounded-lg text-base flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${selected ? 'bg-primary-50 ring-2 ring-primary-500' : 'hover:bg-gray-100'}`}
+                >
+                  {emoji}
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-3">
+            <Field id={id('icon')} label="Or any emoji" error={fieldErrors.icon}>
+              <input
+                {...fieldProps(id('icon'), fieldErrors.icon)}
+                name="icon" value={form.icon} onChange={handleChange} maxLength={16}
+                placeholder="e.g. 🐶"
+                className={inputCls}
+              />
+            </Field>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="text-sm font-medium text-gray-700 mb-2">Color</legend>
+          <div className="flex items-center gap-2">
+            {CATEGORY_COLORS.map((c) => {
+              const selected = form.color === c
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, color: c }))}
+                  aria-label={`Color ${c}`}
+                  aria-pressed={selected}
+                  className={`w-6 h-6 rounded-full transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${selected ? 'ring-2 ring-offset-2 ring-gray-900' : ''}`}
+                  style={{ backgroundColor: c }}
+                />
+              )
+            })}
             <input
-              {...fieldProps(id('icon'), fieldErrors.icon)}
-              name="icon" value={form.icon} onChange={handleChange}
-              placeholder="🍔"
-              className={inputCls}
-            />
-          </Field>
-          <Field id={id('color')} label="Color" error={fieldErrors.color}>
-            <input
-              {...fieldProps(id('color'), fieldErrors.color)}
               type="color" name="color" value={form.color} onChange={handleChange}
-              className="w-full h-[38px] px-1 py-1 border border-gray-300 rounded-lg cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              aria-label="Custom color" title="Custom color"
+              className="w-6 h-6 p-0 border-0 bg-transparent rounded-full cursor-pointer"
             />
-          </Field>
-        </div>
+          </div>
+        </fieldset>
         <div className="flex gap-3 pt-2">
           <button
             type="button" onClick={onClose} disabled={saving}

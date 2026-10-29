@@ -5,6 +5,17 @@ import { formatMoney } from '../../utils/format'
 
 const PALETTE = ['#3b82f6', '#22c55e', '#a855f7', '#f97316', '#ec4899', '#14b8a6', '#eab308', '#6366f1']
 
+// Prefers each category's own color, but never reuses one already taken by another slice.
+function assignSliceColors(items) {
+  const used = new Set()
+  return items.map((c, i) => {
+    const own = c.color && !used.has(c.color.toLowerCase()) ? c.color : null
+    const fill = own ?? PALETTE.find((p) => !used.has(p.toLowerCase())) ?? PALETTE[i % PALETTE.length]
+    used.add(fill.toLowerCase())
+    return { ...c, fill }
+  })
+}
+
 function compact(value, currency) {
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -30,7 +41,7 @@ function CategoryBreakdown({ items, loading, failed, onRetry, currency }) {
   if (items.length === 0) {
     return <p className="text-sm text-gray-400 py-12 text-center">No spending in this period.</p>
   }
-  const data = items.map((c, i) => ({ ...c, fill: c.color || PALETTE[i % PALETTE.length] }))
+  const data = assignSliceColors(items)
   const total = data.reduce((sum, c) => sum + c.total, 0)
   return (
     <div className="flex flex-col sm:flex-row items-center gap-4">

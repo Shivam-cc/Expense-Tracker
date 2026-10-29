@@ -17,6 +17,7 @@ import ExpenseModal from '../components/dashboard/ExpenseModal'
 import CategoryModal from '../components/dashboard/CategoryModal'
 import ConfirmDialog from '../components/dashboard/ConfirmDialog'
 import { buildTrend } from '../utils/trend'
+import { computeKpis, getPreviousRange } from '../utils/kpis'
 import { normalizeSummary } from '../utils/format'
 import { RANGE_PRESETS, formatDisplayDate } from '../utils/date'
 import { saveBlob } from '../utils/download'
@@ -54,7 +55,22 @@ export default function DashboardPage() {
     `${startDate}|${endDate}`,
   )
   const trendData = useAsyncData(() => fetchTrendExpenses(startDate, endDate), `${startDate}|${endDate}`)
+  const previousSummary = useAsyncData(() => {
+    const prev = getPreviousRange(startDate, endDate)
+    return expensesApi.summary(prev.startDate, prev.endDate).then(normalizeSummary)
+  }, `${startDate}|${endDate}`)
 
+  const kpis = useMemo(
+    () => computeKpis({
+      summary: summary.data,
+      previousSummary: previousSummary.data,
+      expenses: trendData.data?.expenses ?? null,
+      truncated: trendData.data?.truncated,
+      startDate,
+      endDate,
+    }),
+    [summary.data, previousSummary.data, trendData.data, startDate, endDate],
+  )
   const catList = categories.data
   const catMap = useMemo(() => Object.fromEntries((catList || []).map((c) => [c.id, c])), [catList])
   const catByName = useMemo(() => Object.fromEntries((catList || []).map((c) => [c.name, c])), [catList])
@@ -88,7 +104,7 @@ export default function DashboardPage() {
     ? `${formatDisplayDate(startDate)} – ${formatDisplayDate(endDate)}`
     : RANGE_PRESETS.find((p) => p.id === f.preset).label
 
-  const reloadSummaries = () => { summary.reload(); trendData.reload() }
+  const reloadSummaries = () => { summary.reload(); previousSummary.reload(); trendData.reload() }
 
   const handleExpenseSaved = () => {
     setExpenseModal(null)
@@ -175,14 +191,11 @@ export default function DashboardPage() {
       </div>
 
       <SummaryCards
-        summary={summary.data}
-        summaryLoading={summary.loading}
-        summaryFailed={Boolean(summary.error)}
-        onRetrySummary={summary.reload}
-        expenseCount={expenses.data ? totalElements : null}
-        expenseCountLoading={expenses.loading && !expenses.data}
-        categoryCount={catList ? catList.length : null}
-        rangeLabel={rangeLabel}
+        kpis={kpis}
+        loading={summary.loading}
+        failed={Boolean(summary.error)}
+        onRetry={summary.reload}
+        expensesLoading={trendData.loading && !trendData.data}
         currency={currency}
       />
 
@@ -275,9 +288,12 @@ export default function DashboardPage() {
         <ExpenseModal
           expense={expenseModal}
           categories={catList || []}
+          categoriesLoading={categories.loading}
+          categoriesError={categories.error}
           currency={currency}
           onSave={handleExpenseSaved}
           onClose={() => setExpenseModal(null)}
+          onAddCategory={() => setCategoryModal({})}
         />
       )}
       {categoryModal !== null && (

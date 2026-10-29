@@ -8,8 +8,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -152,12 +155,62 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
         assertThat(expense.get("categoryId").isNull()).isTrue();
     }
 
+    // ---- default (seeded) categories -----------------------------------------------------------
+
+    @Test
+    void freshAccountSeesTheSeededDefaultCategories() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+
+        JsonNode list = send(get("/api/categories").header("Authorization", bearer(auth)), 200);
+        Set<String> defaults = new HashSet<>();
+        for (JsonNode c : list) {
+            if (c.get("global").asBoolean()) defaults.add(c.get("name").asText());
+        }
+        assertThat(defaults).contains("Food", "Groceries", "Coffee", "Train", "Car", "Flights", "Shopping",
+                "Home", "Bills", "Health", "Fitness", "Entertainment", "Education", "Gifts", "Subscriptions", "Other");
+    }
+
+    @Test
+    void defaultCategoryNamesAreReservedForPersonalCategories() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        long mine = createCategory(auth, "Pets").get("id").asLong();
+
+        send(jsonPost("/api/categories", Map.of("name", "food", "icon", "🍕", "color", "#aabbcc"))
+                .header("Authorization", bearer(auth)), 409);
+        jsonPut("/api/categories/" + mine, auth, Map.of("name", "Groceries"), 409);
+
+        JsonNode renamed = jsonPut("/api/categories/" + mine, auth, Map.of("name", "Pets and vets"), 200);
+        assertThat(renamed.get("name").asText()).isEqualTo("Pets and vets");
+        assertThat(renamed.get("global").asBoolean()).isFalse();
+    }
+
+    @Test
+    void defaultCategoriesCannotBeChangedAndOtherUsersExpensesStayCategorized() throws Exception {
+        JsonNode bob = register(uniqueEmail(), PASSWORD);
+        JsonNode alice = register(uniqueEmail(), PASSWORD);
+        long groceries = categoryNamed(bob, "Groceries").get("id").asLong();
+        long bobExpense = createExpense(bob, "weekly shop", "42", groceries).get("id").asLong();
+
+        jsonPut("/api/categories/" + groceries, alice, Map.of("name", "hijacked"), 403);
+        send(delete("/api/categories/" + groceries).header("Authorization", bearer(alice)), 403);
+
+        JsonNode expense = send(get("/api/expenses/" + bobExpense).header("Authorization", bearer(bob)), 200);
+        assertThat(expense.get("categoryId").asLong()).isEqualTo(groceries);
+    }
+
+    private JsonNode categoryNamed(JsonNode auth, String name) throws Exception {
+        for (JsonNode c : send(get("/api/categories").header("Authorization", bearer(auth)), 200)) {
+            if (name.equals(c.get("name").asText())) return c;
+        }
+        throw new AssertionError("No category named " + name);
+    }
+
     // ---- summary -------------------------------------------------------------------------------
 
     @Test
     void summaryGroupsByCategoryAndReportsUncategorized() throws Exception {
         JsonNode auth = register(uniqueEmail(), PASSWORD);
-        long food = createCategory(auth, "Food").get("id").asLong();
+        long food = createCategory(auth, "Dining").get("id").asLong();
         createExpense(auth, "a", "10.00", food);
         createExpense(auth, "b", "5.50", food);
         createExpense(auth, "c", "4.00", null);
@@ -172,7 +225,7 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
         assertThat(byCategory.isArray()).isTrue();
         assertThat(byCategory).hasSize(2);
         // ordered by spend, largest first
-        assertThat(byCategory.get(0).get("name").asText()).isEqualTo("Food");
+        assertThat(byCategory.get(0).get("name").asText()).isEqualTo("Dining");
         assertThat(byCategory.get(0).get("categoryId").asLong()).isEqualTo(food);
         assertThat(byCategory.get(0).get("total").decimalValue()).isEqualByComparingTo("15.50");
         assertThat(byCategory.get(1).get("name").asText()).isEqualTo("Uncategorized");
@@ -290,6 +343,20 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void sameDayExpensesFlipWhenTheDateDirectionFlips() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        for (String name : List.of("first", "second", "third")) createExpense(auth, name, "1", null);
+
+        JsonNode newest = send(get("/api/expenses").param("sortBy", "date").param("direction", "desc")
+                .header("Authorization", bearer(auth)), 200);
+        JsonNode oldest = send(get("/api/expenses").param("sortBy", "date").param("direction", "asc")
+                .header("Authorization", bearer(auth)), 200);
+
+        assertThat(newest.get("content").findValuesAsText("description")).containsExactly("third", "second", "first");
+        assertThat(oldest.get("content").findValuesAsText("description")).containsExactly("first", "second", "third");
+    }
+
+    @Test
     void pagingEnvelopeHasStableShape() throws Exception {
         JsonNode auth = register(uniqueEmail(), PASSWORD);
         for (int i = 0; i < 3; i++) createExpense(auth, "e" + i, "1", null);
@@ -307,7 +374,7 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
     @Test
     void listSupportsTextCategoryAndDateFilters() throws Exception {
         JsonNode auth = register(uniqueEmail(), PASSWORD);
-        long food = createCategory(auth, "Food").get("id").asLong();
+        long food = createCategory(auth, "Dining").get("id").asLong();
         createExpense(auth, "Pizza night", "20", "2026-02-10", food, "with friends");
         createExpense(auth, "Taxi", "8", "2026-03-05", null, "airport run");
         createExpense(auth, "100% organic", "6", "2026-03-20", null, null);
