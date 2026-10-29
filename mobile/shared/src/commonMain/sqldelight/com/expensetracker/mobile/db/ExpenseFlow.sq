@@ -1,0 +1,134 @@
+CREATE TABLE expense (
+    id TEXT NOT NULL PRIMARY KEY,
+    server_id INTEGER,
+    description TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL,
+    expense_date TEXT NOT NULL,
+    category_server_id INTEGER,
+    category_client_id TEXT,
+    notes TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER
+);
+
+CREATE INDEX expense_server_id ON expense(server_id);
+
+CREATE TABLE category (
+    id TEXT NOT NULL PRIMARY KEY,
+    server_id INTEGER,
+    name TEXT NOT NULL,
+    icon TEXT,
+    color TEXT,
+    is_global INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER
+);
+
+CREATE INDEX category_server_id ON category(server_id);
+
+CREATE TABLE outbox (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX outbox_entity_client ON outbox(entity, client_id);
+
+CREATE TABLE sync_state (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+selectActiveExpenses:
+SELECT * FROM expense WHERE deleted_at IS NULL ORDER BY expense_date DESC, created_at DESC;
+
+selectExpenseById:
+SELECT * FROM expense WHERE id = :id;
+
+selectExpenseByServerId:
+SELECT * FROM expense WHERE server_id = :serverId;
+
+upsertExpense:
+INSERT OR REPLACE INTO expense (id, server_id, description, amount_minor, expense_date, category_server_id, category_client_id, notes, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateExpenseLocal:
+UPDATE expense SET
+    description = :description,
+    amount_minor = :amountMinor,
+    expense_date = :expenseDate,
+    category_server_id = :categoryServerId,
+    category_client_id = :categoryClientId,
+    notes = :notes,
+    updated_at = :updatedAt
+WHERE id = :id;
+
+markExpenseDeleted:
+UPDATE expense SET deleted_at = :deletedAt, updated_at = :updatedAt WHERE id = :id;
+
+markExpenseSynced:
+UPDATE expense SET server_id = :serverId, updated_at = :updatedAt WHERE id = :id;
+
+setExpenseServerId:
+UPDATE expense SET server_id = :serverId WHERE id = :id;
+
+relinkExpensesToCategory:
+UPDATE expense SET category_client_id = :categoryClientId WHERE category_server_id = :serverId;
+
+selectActiveCategories:
+SELECT * FROM category WHERE deleted_at IS NULL ORDER BY name;
+
+selectCategoryById:
+SELECT * FROM category WHERE id = :id;
+
+selectCategoryByServerId:
+SELECT * FROM category WHERE server_id = :serverId;
+
+upsertCategory:
+INSERT OR REPLACE INTO category (id, server_id, name, icon, color, is_global, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+renameCategory:
+UPDATE category SET name = :name, updated_at = :updatedAt WHERE id = :id;
+
+markCategoryDeleted:
+UPDATE category SET deleted_at = :deletedAt, updated_at = :updatedAt WHERE id = :id;
+
+markCategorySynced:
+UPDATE category SET server_id = :serverId, updated_at = :updatedAt WHERE id = :id;
+
+setCategoryServerId:
+UPDATE category SET server_id = :serverId WHERE id = :id;
+
+selectOutboxForClient:
+SELECT * FROM outbox WHERE entity = :entity AND client_id = :clientId;
+
+selectOutboxByEntity:
+SELECT * FROM outbox WHERE entity = :entity ORDER BY seq;
+
+countOutbox:
+SELECT COUNT(*) AS total FROM outbox;
+
+insertOutbox:
+INSERT INTO outbox (entity, client_id, operation) VALUES (?, ?, ?);
+
+updateOutboxOperation:
+UPDATE outbox SET operation = :operation WHERE seq = :seq;
+
+incrementOutboxAttempts:
+UPDATE outbox SET attempts = attempts + 1 WHERE seq = :seq;
+
+deleteOutbox:
+DELETE FROM outbox WHERE seq = :seq;
+
+selectSyncState:
+SELECT value FROM sync_state WHERE key = :key;
+
+upsertSyncState:
+INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?);
+
+deleteSyncState:
+DELETE FROM sync_state WHERE key = :key;
