@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -46,6 +47,7 @@ public class ExpenseService {
                 .category(category)
                 .user(user)
                 .notes(request.getNotes())
+                .updatedAt(Instant.now())
                 .build();
 
         return mapToResponse(expenseRepository.save(expense));
@@ -83,13 +85,19 @@ public class ExpenseService {
         expense.setDate(request.getDate());
         expense.setCategory(category);
         expense.setNotes(request.getNotes());
+        expense.setUpdatedAt(Instant.now());
 
         return mapToResponse(expenseRepository.save(expense));
     }
 
+    /** Soft delete: the tombstone keeps the id visible to sync pulls while every read path hides it. */
     @Transactional
     public void deleteExpense(Long id, User user) {
-        expenseRepository.delete(findOwned(id, user));
+        Expense expense = findOwned(id, user);
+        Instant now = Instant.now();
+        expense.setDeletedAt(now);
+        expense.setUpdatedAt(now);
+        expenseRepository.save(expense);
     }
 
     public SummaryResponse getSummary(User user, LocalDate startDate, LocalDate endDate) {

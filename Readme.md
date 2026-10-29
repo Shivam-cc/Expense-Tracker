@@ -22,6 +22,12 @@ A full-stack expense tracking application built with **React 19** (frontend) and
 - **Spring Boot Actuator**, **Sentry** and **springdoc** OpenAPI docs
 - **Maven** wrapper (`mvnw`) with JaCoCo coverage
 
+### Sync API (v1)
+Mobile clients sync expenses and categories through `/api/v1/expenses` and `/api/v1/categories`. The API provides
+change feeds with cursor pagination (`/changes`), idempotent creates by `clientId`, last-write-wins updates, and soft
+deletes (tombstones with `deletedAt`). Global categories are read-only. The existing `/api/*` endpoints are unchanged.
+See [Mobile sync API v1](docs/api/mobile-sync-v1.md) for the full contract, examples, and error behavior.
+
 ## Project Structure
 
 ```
@@ -31,7 +37,7 @@ Expense-Tracker/
 │   ├── src/
 │   │   ├── main/java/com/expensetracker/
 │   │   │   ├── config/     # Security, JWT, rate limiting, request IDs, error handling
-│   │   │   ├── controller/ # REST controllers (auth, expenses, categories)
+│   │   │   ├── controller/ # REST controllers (auth, expenses, categories; v1 sync API in controller/v1/)
 │   │   │   ├── dto/        # Request and response objects
 │   │   │   ├── exception/  # API exceptions
 │   │   │   ├── model/      # MongoDB documents
@@ -135,6 +141,46 @@ Environment variables are documented in [backend/.env.example](backend/.env.exam
 ### Deployment
 - **Backend (Railway):** `railway.toml` builds `backend/Dockerfile` and checks `/actuator/health`. Set `SPRING_PROFILES_ACTIVE=prod`, `MONGODB_URI` (authenticated Atlas or replica-set URI including the database name), `JWT_SECRET` (base64, at least 256 bits; generate with `openssl rand -base64 48`), and `CORS_ORIGINS` (your exact frontend origin). Optional: `SENDGRID_API_KEY`, `SENDGRID_FROM`, `SENTRY_DSN`. Configure database access controls, durable storage, and backups; see [backup and restore](docs/operations/backup-restore.md).
 - **Frontend (Vercel):** `frontend/vercel.json` handles SPA routing. Set `VITE_API_URL` to the backend's public URL. Optional: `VITE_SENTRY_DSN`.
+
+## Mobile App (Planned)
+
+Native iOS and Android apps are planned. They are not implemented yet.
+
+**Approach:** native UIs (SwiftUI and Jetpack Compose) on a shared Kotlin Multiplatform (KMP) core. The core holds models, the API client, the local database, the sync engine, and auth/token logic. The existing Spring Boot API and MongoDB backend stay as they are, with the mobile-specific additions below.
+
+| Layer | iOS | Android | Shared (KMP) |
+|---|---|---|---|
+| UI | SwiftUI, Swift Charts | Jetpack Compose, Material 3, Vico | - |
+| Networking | - | - | Ktor Client, kotlinx.serialization, OpenAPI-generated models |
+| Local DB | - | - | SQLDelight (outbox pattern for offline writes) |
+| Secure storage | Keychain | Android Keystore | expect/actual wrappers |
+| Platform features | WidgetKit, App Intents, VisionKit + Vision OCR, Face ID / Touch ID, APNs | Jetpack Glance, App Actions, ML Kit scanner + text recognition, BiometricPrompt, FCM | - |
+| Background sync | BGTaskScheduler | WorkManager | Sync engine |
+| Testing | XCTest / Swift Testing, XCUITest | JUnit, Compose UI Test | kotlin.test |
+
+**Offline-first:** the local database is the source of truth for the UI. Writes go to a local outbox, and a sync engine pushes and pulls in the background. Records use client-generated UUIDv7 IDs. Conflicts use last-write-wins on server timestamps. Realm / Atlas Device Sync is not used, because MongoDB has deprecated it.
+
+**Backend changes needed before the apps:**
+1. Versioned API (`/api/v1/...`) so older app versions keep working.
+2. Sync support: `GET /expenses?updatedSince=<ts>`, soft deletes (tombstones), `updatedAt` on every document, and an index on `(userId, updatedAt)`.
+3. Idempotency keys on create and update requests, so network retries do not duplicate expenses.
+4. Refresh tokens returned in the response body for native secure storage, with reuse detection, per-device sessions, and "sign out of all devices".
+5. Device registration for push notifications (APNs and FCM tokens per device).
+6. A minimum-supported-version endpoint so a security fix can force an upgrade.
+7. Receipt images, if scanning is added, stored in object storage (S3/R2) through pre-signed uploads rather than in MongoDB.
+8. Optional App Attest (iOS) and Play Integrity (Android) checks on auth endpoints.
+9. Account deletion endpoint that removes the user and all their expenses. Required by both app stores.
+
+**Suggested layout:**
+```
+mobile/
+  shared/        KMP module: models, sync, database, networking
+  androidApp/    Jetpack Compose app
+  iosApp/        SwiftUI app consuming the shared framework
+api/openapi.yaml exported spec used to generate web and mobile clients
+```
+
+**Build order:** backend changes → KMP core (heavily unit-tested) → auth, expense list/add, categories, and dashboard in both apps → platform extras (widgets, biometrics, receipt OCR, shortcuts, reminders) → TestFlight and Play closed testing.
 
 ## License
 MIT

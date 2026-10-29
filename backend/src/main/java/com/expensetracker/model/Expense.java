@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -49,7 +50,14 @@ public class Expense implements IdentifiedDocument {
     @CreatedDate
     private LocalDateTime createdAt;
 
+    /** Server-assigned UTC write time; drives sync pulls. */
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
+
+    /** Soft-delete tombstone: set instead of removing the document so sync clients learn about deletions. */
+    private Instant deletedAt;
+
+    /** Client-generated UUID that makes create retries idempotent per user. */
+    private String clientId;
 
 }

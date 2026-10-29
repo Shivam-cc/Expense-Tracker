@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -33,6 +34,7 @@ public class CategoryService {
                 .icon(request.getIcon())
                 .color(request.getColor())
                 .user(user)
+                .updatedAt(Instant.now())
                 .build();
 
         Category saved = categoryRepository.save(category);
@@ -54,22 +56,30 @@ public class CategoryService {
         category.setName(request.getName());
         category.setIcon(request.getIcon());
         category.setColor(request.getColor());
+        category.setUpdatedAt(Instant.now());
 
         Category updated = categoryRepository.save(category);
         return mapToResponse(updated);
     }
 
+    /**
+     * Soft delete. Expenses lose their category reference, and their {@code updatedAt} is bumped
+     * so sync clients on other devices see the change.
+     */
     @Transactional
     public void deleteCategory(Long id, User user) {
         Category category = findOwnedCategory(id, user);
+        Instant now = Instant.now();
 
-        expenseRepository.clearCategory(category.getId());
-        categoryRepository.delete(category);
+        expenseRepository.clearCategory(category.getId(), now);
+        category.setDeletedAt(now);
+        category.setUpdatedAt(now);
+        categoryRepository.save(category);
     }
 
     /** Default category names are reserved so each name resolves to exactly one category in the UI. */
     private void ensureNameNotDefault(String name) {
-        if (categoryRepository.existsByNameIgnoreCaseAndUserIsNull(name)) {
+        if (categoryRepository.existsByNameIgnoreCaseAndUserIsNullAndDeletedAtIsNull(name)) {
             throw new ConflictException("A default category named \"" + name + "\" already exists");
         }
     }
@@ -77,6 +87,7 @@ public class CategoryService {
     /** Global categories (user == null) are read-only; other users' categories are reported as missing. */
     private Category findOwnedCategory(Long id, User user) {
         Category category = categoryRepository.findById(id)
+                .filter(found -> found.getDeletedAt() == null)
                 .orElseThrow(() -> new NotFoundException("Category not found"));
 
         if (category.getUser() == null) {

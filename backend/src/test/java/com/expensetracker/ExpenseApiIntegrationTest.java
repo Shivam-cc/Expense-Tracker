@@ -1,7 +1,9 @@
 package com.expensetracker;
 
 import com.expensetracker.model.Category;
+import com.expensetracker.model.Expense;
 import com.expensetracker.repository.CategoryRepository;
+import com.expensetracker.repository.ExpenseRepository;
 import com.expensetracker.support.IntegrationTestBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,9 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private ExpenseRepository expenseRepository;
 
     // ---- helpers -------------------------------------------------------------------------------
 
@@ -442,6 +447,66 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
     @Test
     void exportRequiresAuthentication() throws Exception {
         send(get("/api/expenses/export"), 401);
+    }
+
+    // ---- soft delete ---------------------------------------------------------------------------
+
+    @Test
+    void deletedExpensesAreHiddenFromEveryReadPathButKeepATombstone() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        long food = createCategory(auth, "Tombstoned").get("id").asLong();
+        createExpense(auth, "kept", "10.00", "2026-03-10", food, "keep me");
+        long gone = createExpense(auth, "removed", "99.00", "2026-03-11", food, "find me").get("id").asLong();
+
+        send(delete("/api/expenses/" + gone).header("Authorization", bearer(auth)), 204);
+
+        String url = "/api/expenses/" + gone;
+        send(get(url).header("Authorization", bearer(auth)), 404);
+        jsonPut(url, auth, Map.of("description", "revived", "amount", "1", "date", "2026-03-15"), 404);
+        send(delete(url).header("Authorization", bearer(auth)), 404);
+
+        assertThat(count(auth, Map.of())).isEqualTo(1);
+        assertThat(count(auth, Map.of("q", "find me"))).isZero();
+        assertThat(count(auth, Map.of("categoryId", String.valueOf(food)))).isEqualTo(1);
+
+        JsonNode summary = send(get("/api/expenses/summary")
+                .param("startDate", "2026-03-01").param("endDate", "2026-03-31")
+                .header("Authorization", bearer(auth)), 200);
+        assertThat(summary.get("total").decimalValue()).isEqualByComparingTo("10.00");
+        assertThat(summary.get("byCategory")).hasSize(1);
+        assertThat(summary.get("byCategory").get(0).get("total").decimalValue()).isEqualByComparingTo("10.00");
+
+        String csv = mvc.perform(get("/api/expenses/export").header("Authorization", bearer(auth)))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(csv).contains("kept").doesNotContain("removed");
+
+        Expense tombstone = expenseRepository.findById(gone).orElseThrow();
+        assertThat(tombstone.getDeletedAt()).isNotNull();
+        assertThat(tombstone.getUpdatedAt()).isAfterOrEqualTo(tombstone.getDeletedAt());
+    }
+
+    @Test
+    void deletedCategoriesDisappearCannotBeUsedOrChangedAndDetachExpenses() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        long doomed = createCategory(auth, "Soft gone").get("id").asLong();
+        long expenseId = createExpense(auth, "filed", "5", doomed).get("id").asLong();
+
+        send(delete("/api/categories/" + doomed).header("Authorization", bearer(auth)), 204);
+
+        for (JsonNode c : send(get("/api/categories").header("Authorization", bearer(auth)), 200)) {
+            assertThat(c.get("id").asLong()).isNotEqualTo(doomed);
+        }
+        jsonPut("/api/categories/" + doomed, auth, Map.of("name", "Revived"), 404);
+        send(delete("/api/categories/" + doomed).header("Authorization", bearer(auth)), 404);
+        send(jsonPost("/api/expenses", Map.of("description", "x", "amount", "1", "date", "2026-03-15", "categoryId", doomed))
+                .header("Authorization", bearer(auth)), 404);
+
+        Category tombstone = categoryRepository.findById(doomed).orElseThrow();
+        assertThat(tombstone.getDeletedAt()).isNotNull();
+
+        Expense filed = expenseRepository.findById(expenseId).orElseThrow();
+        assertThat(filed.getCategory()).isNull();
+        assertThat(filed.getUpdatedAt()).isEqualTo(tombstone.getDeletedAt());
     }
 
     // ---- currency ------------------------------------------------------------------------------

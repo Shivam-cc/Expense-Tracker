@@ -15,6 +15,8 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 @RequiredArgsConstructor
 public class MongoDatabaseInitializer implements ApplicationRunner {
@@ -45,7 +47,36 @@ public class MongoDatabaseInitializer implements ApplicationRunner {
         template.indexOps(Expense.class).ensureIndex(new Index().on("user", Sort.Direction.ASC)
                 .on("date", Sort.Direction.DESC).on("_id", Sort.Direction.DESC));
         template.indexOps(Expense.class).ensureIndex(new Index().on("category", Sort.Direction.ASC));
+        ensureSyncIndexes();
         seedCategories();
+        backfillUpdatedAt();
+    }
+
+    /** Sync pulls scan by owner and updatedAt; clientId is unique per owner only when present, so create retries are idempotent. */
+    private void ensureSyncIndexes() {
+        template.indexOps(Expense.class).ensureIndex(new Index().named("expenses_user_updatedAt")
+                .on("user", Sort.Direction.ASC).on("updatedAt", Sort.Direction.ASC));
+        template.indexOps(Category.class).ensureIndex(new Index().named("categories_user_updatedAt")
+                .on("user", Sort.Direction.ASC).on("updatedAt", Sort.Direction.ASC));
+        template.indexOps(Expense.class).ensureIndex(new Index().named("expenses_user_clientId_unique")
+                .on("user", Sort.Direction.ASC).on("clientId", Sort.Direction.ASC).unique()
+                .partial(PartialIndexFilter.of(Criteria.where("clientId").exists(true))));
+        template.indexOps(Category.class).ensureIndex(new Index().named("categories_user_clientId_unique")
+                .on("user", Sort.Direction.ASC).on("clientId", Sort.Direction.ASC).unique()
+                .partial(PartialIndexFilter.of(Criteria.where("clientId").exists(true))));
+    }
+
+    /**
+     * Sets updatedAt on documents that predate it, copying the stored createdAt instant (already UTC in BSON),
+     * or the current time when there is none. Documents that already have updatedAt are never matched, so reruns are no-ops.
+     */
+    private void backfillUpdatedAt() {
+        Document missingUpdatedAt = new Document("updatedAt", null);
+        List<Document> pipeline = List.of(new Document("$set", new Document("updatedAt",
+                new Document("$ifNull", List.of("$createdAt", "$$NOW")))));
+        for (Class<?> type : new Class<?>[]{Expense.class, Category.class}) {
+            template.getCollection(template.getCollectionName(type)).updateMany(missingUpdatedAt, pipeline);
+        }
     }
 
     private void seedCategories() {

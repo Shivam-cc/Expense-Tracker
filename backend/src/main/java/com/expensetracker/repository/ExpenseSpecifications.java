@@ -12,10 +12,10 @@ public final class ExpenseSpecifications {
 
     private ExpenseSpecifications() {}
 
-    /** Always scoped to the user; every other filter is optional. */
+    /** Always scoped to the user and excludes soft-deleted tombstones; every other filter is optional. */
     public static Criteria filter(
             Long userId, String query, Long categoryId, LocalDate startDate, LocalDate endDate) {
-        Criteria criteria = Criteria.where("user").is(userId);
+        Criteria criteria = Criteria.where("user").is(userId).and("deletedAt").isNull();
         if (query != null && !query.isBlank()) {
             Pattern pattern = Pattern.compile(Pattern.quote(query.trim()), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
             criteria.orOperator(Criteria.where("description").regex(pattern), Criteria.where("notes").regex(pattern));

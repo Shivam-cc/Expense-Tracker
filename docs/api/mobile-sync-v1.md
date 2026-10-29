@@ -1,0 +1,314 @@
+# Mobile sync API v1
+
+This document is the contract for the versioned sync API that mobile clients use to keep expenses and categories
+in step with the server. Sync resources live only under `/api/v1`. The existing `/api/*` endpoints and
+`/api/auth/*` are unchanged.
+
+## Conventions
+
+**Authentication.** Send `Authorization: Bearer <access token>` on every request. Requests with a missing or invalid
+token are rejected by the existing authentication layer.
+
+**Timestamps.** `updatedAt`, `deletedAt`, `createdAt`, `serverTime`, and `updatedSince` are ISO-8601 UTC instants,
+for example `2026-10-29T10:00:00Z`. Values may include fractional seconds, for example `2026-10-29T10:00:00.120Z`.
+Clients must parse them as instants.
+
+**Dates and amounts.** `date` is an ISO local date (`yyyy-MM-dd`). `amount` is a JSON number with at most 2 decimal places.
+
+**Errors.** Every error uses the standard error body:
+
+```json
+{
+  "timestamp": "2026-10-29T10:00:00.000",
+  "status": 404,
+  "error": "Not Found",
+  "message": "Expense not found",
+  "path": "/api/v1/expenses/42"
+}
+```
+
+Validation failures (400) add an `errors` object that maps each field to a message.
+
+| Status | Meaning in v1 |
+|---|---|
+| 400 | Invalid body or parameter: missing or non-UUID `clientId`, failed field validation, `limit` outside 1..500, unparseable `updatedSince`, or invalid `cursor`. |
+| 401 | Rejected by the existing authentication layer when the access token is missing or invalid. |
+| 403 | Attempt to change a global (built-in) category with PUT or DELETE. |
+| 404 | Record does not exist, belongs to another user, or is a tombstone (for PUT), or a referenced category is missing, another user's, or deleted. |
+| 409 | Category name matches a built-in category (case-insensitive). |
+
+## Data model
+
+### ExpenseV1 (response)
+
+```json
+{
+  "id": 42,
+  "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b",
+  "description": "Coffee",
+  "amount": 4.5,
+  "date": "2026-10-28",
+  "categoryId": 7,
+  "categoryName": "Food",
+  "notes": null,
+  "createdAt": "2026-10-28T09:15:00Z",
+  "updatedAt": "2026-10-28T09:15:00Z",
+  "deletedAt": null
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | long | Server id. Use it for PUT and DELETE. |
+| `clientId` | string or null | Client-generated UUID. Stored in lower case. |
+| `description` | string | |
+| `amount` | number | At most 2 decimals. |
+| `date` | string | `yyyy-MM-dd` |
+| `categoryId` | long or null | Null when uncategorized, or after the category was deleted. |
+| `categoryName` | string or null | Name of the referenced category. |
+| `notes` | string or null | |
+| `createdAt` | instant or null | Null for rows written before timestamps were recorded. |
+| `updatedAt` | instant | Set by the server on every write, including deletes and category cascades. |
+| `deletedAt` | instant or null | Non-null on a tombstone. |
+
+### ExpenseV1Request (body for POST and PUT)
+
+```json
+{
+  "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b",
+  "description": "Coffee",
+  "amount": 4.5,
+  "date": "2026-10-28",
+  "categoryId": 7,
+  "notes": null
+}
+```
+
+| Field | Rules |
+|---|---|
+| `clientId` | Required on POST, must be a UUID. Ignored on PUT. |
+| `description` | Required, at most 255 characters. |
+| `amount` | Required, positive, at most 10 integer digits and 2 decimals. |
+| `date` | Required, `yyyy-MM-dd`. |
+| `categoryId` | Optional. Must be one of the caller's live categories or a live global category. |
+| `notes` | Optional, at most 1000 characters. |
+
+### CategoryV1 (response)
+
+```json
+{
+  "id": 7,
+  "clientId": null,
+  "name": "Food",
+  "icon": "utensils",
+  "color": "#f97316",
+  "global": true,
+  "updatedAt": "2026-10-01T00:00:00Z",
+  "deletedAt": null
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | long | |
+| `clientId` | string or null | Null for global categories. |
+| `name` | string | |
+| `icon` | string or null | |
+| `color` | string or null | |
+| `global` | boolean | `true` for built-in categories. These are read-only. |
+| `updatedAt` | instant | |
+| `deletedAt` | instant or null | Non-null on a tombstone. |
+
+### CategoryV1Request (body for POST and PUT)
+
+```json
+{
+  "clientId": "9b2e1d4c-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+  "name": "Travel",
+  "icon": "plane",
+  "color": "#3b82f6"
+}
+```
+
+| Field | Rules |
+|---|---|
+| `clientId` | Required on POST, must be a UUID. Ignored on PUT. |
+| `name` | Required, at most 50 characters. |
+| `icon` | Optional, at most 16 characters. |
+| `color` | Optional, hex like `#3b82f6`. |
+
+### Changes page
+
+```json
+{
+  "items": [ ],
+  "nextCursor": "MTc4MDA4MDgwMDAwMHwxMjM",
+  "hasMore": true,
+  "serverTime": "2026-10-29T10:00:05Z"
+}
+```
+
+`nextCursor` is `null` when `hasMore` is `false`. `serverTime` is read before the page is queried.
+
+## Change feeds
+
+### GET /api/v1/expenses/changes
+
+Returns the caller's expenses, including tombstones (rows with `deletedAt` set).
+
+Query parameters:
+
+| Name | Required | Default | Behavior |
+|---|---|---|---|
+| `updatedSince` | no | none | Returns rows with `updatedAt >= updatedSince`. The comparison is inclusive. Omitted means start from the beginning. |
+| `cursor` | no | none | Opaque value from a previous `nextCursor`. When present, `updatedSince` is ignored. |
+| `limit` | no | 200 | Integer 1..500. Anything else returns 400. |
+
+Ordering is `updatedAt` ascending, then `id` ascending. The `cursor` encodes the last returned row's
+`(updatedAt, id)`. Clients must treat it as opaque. Internally it is base64url of `"<epoch millis>|<id>"`, which is
+an implementation detail.
+
+Response: `200 OK` with a changes page of `ExpenseV1` items.
+
+```
+GET /api/v1/expenses/changes?updatedSince=2026-10-28T00:00:00Z&limit=2
+```
+
+```json
+{
+  "items": [
+    { "id": 42, "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b", "description": "Coffee", "amount": 4.5,
+      "date": "2026-10-28", "categoryId": 7, "categoryName": "Food", "notes": null,
+      "createdAt": "2026-10-28T09:15:00Z", "updatedAt": "2026-10-28T09:15:00Z", "deletedAt": null },
+    { "id": 43, "clientId": "0c1d2e3f-4a5b-4c6d-8e7f-900112233445", "description": "Old lunch", "amount": 12,
+      "date": "2026-10-20", "categoryId": null, "categoryName": null, "notes": null,
+      "createdAt": "2026-10-20T12:00:00Z", "updatedAt": "2026-10-28T09:20:00Z", "deletedAt": "2026-10-28T09:20:00Z" }
+  ],
+  "nextCursor": "MTc4MDA2NDAwMDAwMHw0Mw",
+  "hasMore": true,
+  "serverTime": "2026-10-29T10:00:05Z"
+}
+```
+
+### GET /api/v1/categories/changes
+
+Same query parameters, ordering, and response shape, with `CategoryV1` items. The feed includes the caller's
+categories and all global categories (`global: true`), so clients receive the built-in categories through this feed.
+
+### Paging and incremental sync
+
+1. Full or first sync: call the feed with no parameters. While `hasMore` is `true`, call again with `cursor` set to
+   `nextCursor`. The `updatedSince` value is not sent on these calls.
+2. Incremental sync: store `serverTime` from the last completed sync and send it as `updatedSince` next time.
+   Because the comparison is inclusive, the boundary row can come back. Clients must de-duplicate by `id`.
+3. Writes that commit a moment after `serverTime` could be missed by a sync that started just before them. To avoid
+   this, clients should start the next incremental sync a few seconds before the stored `serverTime`. Rows
+   returned twice are harmless.
+4. Tombstones (`deletedAt` set) must be applied locally. Remove the row and keep no live copy.
+
+## Expenses
+
+### POST /api/v1/expenses
+
+Creates an expense. The request is idempotent by `clientId` for the caller.
+
+- `201 Created` with `ExpenseV1` when the expense is new.
+- `200 OK` with the existing `ExpenseV1` when an expense with the same `clientId` already exists for this user. The
+  stored record is returned unchanged, even when the request body differs. This includes a tombstone, which is
+  returned as is with `deletedAt` set.
+- `400` when `clientId` is missing or not a UUID, or other fields fail validation.
+- `404` when `categoryId` does not refer to a usable category (another user's, deleted, or unknown).
+
+```
+POST /api/v1/expenses
+{ "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b", "description": "Coffee", "amount": 4.5,
+  "date": "2026-10-28", "categoryId": 7, "notes": null }
+```
+
+Response `201` on first use, `200` on any retry with the same `clientId`. The body is an `ExpenseV1` object.
+
+### PUT /api/v1/expenses/{id}
+
+Replaces the mutable fields of the expense: `description`, `amount`, `date`, `categoryId`, and `notes`. Omitted
+optional fields are set to null. The `clientId` in the body is ignored, so it may be omitted.
+
+- Last write wins. The server sets `updatedAt`.
+- `200 OK` with the updated `ExpenseV1`.
+- `404` when the expense does not exist, belongs to another user, or is a tombstone. A tombstone can never be
+  edited or resurrected through this endpoint.
+- `400` for validation failures, and `404` when `categoryId` is not usable.
+
+### DELETE /api/v1/expenses/{id}
+
+Soft delete. Sets `deletedAt` and `updatedAt`. The row stays in the database so that the change feed can report it.
+
+- `204 No Content` on success.
+- Idempotent. Deleting an expense that is already a tombstone returns `204` again without changing it.
+- `404` when the expense does not exist or belongs to another user.
+
+## Categories
+
+### POST /api/v1/categories
+
+Creates a category. Idempotent by `clientId` for the caller, with the same rules as expenses.
+
+- `201 Created` with `CategoryV1` for a new category.
+- `200 OK` with the existing `CategoryV1` when `clientId` already exists for this user, including a tombstone. The
+  stored record is returned unchanged.
+- `400` for a missing or non-UUID `clientId`, or other validation failures.
+- `409 Conflict` when `name` matches a live built-in category, case-insensitively.
+
+### PUT /api/v1/categories/{id}
+
+Replaces `name`, `icon`, and `color`. The `clientId` in the body is ignored.
+
+- `200 OK` with the updated `CategoryV1`. Last write wins.
+- `403 Forbidden` for a global (built-in) category. Built-in categories are read-only, matching the existing
+  `PUT /api/categories/{id}`.
+- `404` when the category does not exist, belongs to another user, or is a tombstone.
+- `409` when the new name matches a live built-in category.
+
+### DELETE /api/v1/categories/{id}
+
+Soft delete of a category owned by the caller.
+
+- `204 No Content` on success.
+- Expenses that reference the category are not deleted. Their `categoryId` is cleared and their `updatedAt` is set to
+  the deletion time, so clients receive the change through the expense feed. Only live expenses are changed,
+  matching the existing category delete.
+- Idempotent. Deleting a category that is already a tombstone returns `204` again.
+- `403` for a global category. These are read-only, matching the existing `DELETE /api/categories/{id}`.
+- `404` when the category does not exist or belongs to another user.
+
+## Tombstones and idempotency rules
+
+- **Tombstones.** A soft-deleted expense or category keeps its `id`, `clientId`, and other fields, and gets `deletedAt`
+  and a new `updatedAt`. Tombstones appear in change feeds so that clients can remove their local copies.
+- **Create idempotency.** `clientId` is unique per user for expenses and categories. A retried POST returns the
+  original record, with status `200` instead of `201`. The record is not modified.
+- **Tombstones are final.** Once deleted, an expense or category cannot be changed with PUT (404). Create with the same
+  `clientId` returns the tombstone (200). To re-create, the client must generate a new `clientId`.
+- **Delete idempotency.** Repeated DELETE on the same id returns 204.
+- **Last write wins.** PUT replaces the fields and sets `updatedAt` to the server time. The server does not merge.
+- **Global categories.** These have no owner and `clientId` is null. They are read-only, and PUT/DELETE return 403.
+
+## Notes for clients
+
+- A category deleted on the server clears `categoryId` on its expenses. Clients should apply the expense feed after
+  the category feed, or handle a null `categoryId` that appears on an expense.
+- Creating or editing an expense with a deleted category returns 404. Clients should clear the selection and retry.
+- `updatedAt` is always set by the server. Clients should not send it.
+- `createdAt` is nullable.
+
+## Example session
+
+```
+GET  /api/v1/categories/changes?limit=500           -> 200, built-in and own categories
+POST /api/v1/expenses  (clientId=A)                 -> 201, expense 42
+POST /api/v1/expenses  (clientId=A, retry)          -> 200, same expense 42
+PUT  /api/v1/expenses/42                            -> 200, updatedAt advanced
+DELETE /api/v1/expenses/42                          -> 204, tombstone
+DELETE /api/v1/expenses/42                          -> 204, no change
+PUT  /api/v1/expenses/42                            -> 404, tombstone
+GET  /api/v1/expenses/changes?updatedSince=...      -> 200, includes item 42 with deletedAt
+```
