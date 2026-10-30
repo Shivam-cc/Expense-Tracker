@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual runs (Actions tab > CI > Run workflow). GitHub has no per-job trigger,
+  # so this runs every job, including mobile-ios.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
