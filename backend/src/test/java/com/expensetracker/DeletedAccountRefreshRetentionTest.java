@@ -66,7 +66,21 @@ class DeletedAccountRefreshRetentionTest extends IntegrationTestBase {
         for (String raw : new String[]{revoked, live}) {
             JsonNode refreshed = send(jsonPost("/api/auth/refresh", Map.of("refreshToken", raw)), 401);
             assertThat(refreshed.get("error").asText()).isEqualTo("account_deleted");
+            assertThat(storedRow(raw).keySet()).isSubsetOf(ALLOWED_FIELDS);
         }
+    }
+
+    @Test
+    void logoutOfADeletedAccountDoesNotModifyDetachedRows() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        String raw = auth.get("refreshToken").asText();
+        deleteAccount(auth);
+        Document before = storedRow(raw);
+
+        send(jsonPost("/api/auth/logout", Map.of("refreshToken", raw)), 204);
+
+        assertThat(storedRow(raw)).isEqualTo(before);
+        assertThat(storedRow(raw).keySet()).isSubsetOf(ALLOWED_FIELDS);
     }
 
     @Test

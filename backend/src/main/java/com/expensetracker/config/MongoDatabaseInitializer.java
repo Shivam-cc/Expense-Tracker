@@ -73,7 +73,7 @@ public class MongoDatabaseInitializer implements ApplicationRunner {
     private void backfillDeletedRefreshRows() {
         List<Document> pipeline = List.of(
                 new Document("$set", new Document("deletedAt", "$$NOW")),
-                new Document("$unset", List.of("userId", "familyId", "replacedBy", "revokedAt", "createdAt", "expiresAt")));
+                new Document("$unset", List.of("userId", "familyId", "replacedBy", "revokedAt", "createdAt", "expiresAt", "_lock")));
         template.getCollection(template.getCollectionName(RefreshToken.class))
                 .updateMany(new Document("accountDeleted", true).append("deletedAt", null), pipeline);
     }

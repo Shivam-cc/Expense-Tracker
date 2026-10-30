@@ -73,8 +73,9 @@ public class RefreshTokenService {
     /** Revokes the session the given token belongs to. Unknown tokens are ignored (logout is idempotent). */
     @Transactional
     public void revoke(String rawToken) {
-        refreshTokenRepository.findByTokenHashForUpdate(hash(rawToken)).ifPresent(token ->
-                refreshTokenRepository.revokeFamily(token.getFamilyId(), LocalDateTime.now()));
+        refreshTokenRepository.findByTokenHashForUpdate(hash(rawToken))
+                .filter(token -> !token.isAccountDeleted())
+                .ifPresent(token -> refreshTokenRepository.revokeFamily(token.getFamilyId(), LocalDateTime.now()));
     }
 
     @Transactional

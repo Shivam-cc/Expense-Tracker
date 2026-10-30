@@ -10,8 +10,13 @@ import java.util.Optional;
 
 public interface RefreshTokenRepository extends DocumentRepository<RefreshToken> {
     default Optional<RefreshToken> findByTokenHashForUpdate(String hash) {
-        return findForUpdate(new org.springframework.data.mongodb.core.query.Query(Criteria.where("tokenHash").is(hash)));
+        // Detached rows are immutable; the locking read would add an internal _lock field to them.
+        return findForUpdate(new org.springframework.data.mongodb.core.query.Query(
+                Criteria.where("tokenHash").is(hash).and("accountDeleted").ne(true)))
+                .or(() -> findByTokenHashAndAccountDeletedTrue(hash));
     }
+
+    Optional<RefreshToken> findByTokenHashAndAccountDeletedTrue(String hash);
 
     @Query("{ 'familyId': ?0, 'revokedAt': null }")
     @Update("{ '$set': { 'revokedAt': ?1 } }")
@@ -24,7 +29,7 @@ public interface RefreshTokenRepository extends DocumentRepository<RefreshToken>
     /** Reduces the user's rows to token hash, accountDeleted and deletedAt. Everything else is removed. */
     @Query("{ 'userId': ?0 }")
     @Update("{ '$set': { 'accountDeleted': true, 'deletedAt': ?1 }, "
-            + "'$unset': { 'userId': '', 'familyId': '', 'replacedBy': '', 'revokedAt': '', 'createdAt': '', 'expiresAt': '' } }")
+            + "'$unset': { 'userId': '', 'familyId': '', 'replacedBy': '', 'revokedAt': '', 'createdAt': '', 'expiresAt': '', '_lock': '' } }")
     long detachAccount(Long userId, LocalDateTime deletedAt);
 
     // Detached rows have no expiresAt, and are left to the TTL index on deletedAt.
