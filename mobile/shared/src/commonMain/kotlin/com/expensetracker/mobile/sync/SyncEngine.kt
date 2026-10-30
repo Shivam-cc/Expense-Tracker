@@ -271,6 +271,26 @@ class SyncEngine(
         updatedAtOf: (T) -> Instant,
         applyItem: (T) -> Unit,
     ) {
+        try {
+            pullPages(name, fetch, updatedAtOf, applyItem)
+        } catch (e: ApiException) {
+            if (e.status != HTTP_GONE) throw e
+            // The server no longer accepts the saved cursor, so the feed restarts from the beginning. Nothing
+            // local is dropped: applyItem skips rows with pending edits and rows newer than the server copy.
+            db.transaction {
+                deleteState("$name.cursor")
+                deleteState("$name.watermark")
+            }
+            pullPages(name, fetch, updatedAtOf, applyItem)
+        }
+    }
+
+    private suspend fun <T> pullPages(
+        name: String,
+        fetch: suspend (updatedSince: Instant?, cursor: String?) -> ChangePage<T>,
+        updatedAtOf: (T) -> Instant,
+        applyItem: (T) -> Unit,
+    ) {
         val cursorKey = "$name.cursor"
         val watermarkKey = "$name.watermark"
         var cursor = getState(cursorKey)
@@ -385,6 +405,7 @@ class SyncEngine(
 
     private companion object {
         const val PAGE_LIMIT = 100
+        const val HTTP_GONE = 410
         const val LAST_SYNC_KEY = "last_sync_at"
         const val RETRY_BASE_DELAY_MS = 30_000L
         const val RETRY_MAX_DELAY_MS = 3_600_000L

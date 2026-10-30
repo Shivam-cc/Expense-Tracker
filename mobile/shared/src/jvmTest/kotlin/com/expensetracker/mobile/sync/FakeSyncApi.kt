@@ -30,6 +30,9 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
 
     /** Thrown for any changes request that carries a cursor, to simulate a network failure mid-pull. */
     var failPagesWith: Throwable? = null
+
+    /** Rejects the next N cursored changes requests with 410, as a server does for an expired cursor. */
+    var staleCursorRejections: Int = 0
     var expenseWriteError: ApiException? = null
     var categoryWriteError: ApiException? = null
 
@@ -88,6 +91,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
 
     override suspend fun getExpenseChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<ExpenseDto> {
         if (cursor != null) failPagesWith?.let { throw it }
+        rejectStaleCursor(cursor)
         return changesPage(expenses.values, { it.updatedAt }, { it.id }, updatedSince, cursor, limit)
     }
 
@@ -143,6 +147,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
 
     override suspend fun getCategoryChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<CategoryDto> {
         if (cursor != null) failPagesWith?.let { throw it }
+        rejectStaleCursor(cursor)
         return changesPage(categories.values, { it.updatedAt }, { it.id }, updatedSince, cursor, limit)
     }
 
@@ -177,6 +182,13 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
         categories[id] = existing.copy(deletedAt = at, updatedAt = at)
         expenses.values.filter { it.categoryId == id }.forEach { expense ->
             expenses[expense.id] = expense.copy(categoryId = null, categoryName = null, updatedAt = at)
+        }
+    }
+
+    private fun rejectStaleCursor(cursor: String?) {
+        if (cursor != null && staleCursorRejections > 0) {
+            staleCursorRejections--
+            throw ApiException(410, "Cursor expired")
         }
     }
 

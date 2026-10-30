@@ -167,6 +167,39 @@ class SyncEngineTest {
     }
 
     @Test
+    fun staleCursorRestartsTheFeedFromTheBeginning() = runTest {
+        val h = SyncTestHarness()
+        h.api.pageSize = 2
+        repeat(3) { h.api.serverCreateExpense("Item $it", 100L, date) }
+        h.api.failPagesWith = IOException("network down")
+        assertFailsWith<IOException> { h.engine.sync() }
+        assertEquals("2", h.syncState("expense.cursor"))
+
+        h.api.failPagesWith = null
+        h.api.staleCursorRejections = 1
+        h.engine.sync()
+
+        assertEquals(0, h.api.staleCursorRejections, "the saved cursor should have been rejected")
+        assertNull(h.syncState("expense.cursor"))
+        assertNotNull(h.syncState("expense.watermark"))
+        assertEquals(3, h.db.expenseFlowQueries.selectActiveExpenses().executeAsList().size)
+    }
+
+    @Test
+    fun staleCursorRejectedAgainAfterRestartSurfaces() = runTest {
+        val h = SyncTestHarness()
+        h.api.pageSize = 2
+        repeat(3) { h.api.serverCreateExpense("Item $it", 100L, date) }
+        h.api.failPagesWith = IOException("network down")
+        assertFailsWith<IOException> { h.engine.sync() }
+
+        h.api.failPagesWith = null
+        h.api.staleCursorRejections = 2
+        val error = assertFailsWith<ApiException> { h.engine.sync() }
+        assertEquals(410, error.status)
+    }
+
+    @Test
     fun expenseWithUnsyncedCategoryStaysInOutbox() = runTest {
         val h = SyncTestHarness()
         val categoryId = h.categories.add("Takeout")
