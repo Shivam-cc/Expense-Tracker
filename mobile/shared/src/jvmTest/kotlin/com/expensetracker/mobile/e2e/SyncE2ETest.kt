@@ -306,12 +306,13 @@ private suspend fun <T : Any> pageAll(
 private suspend fun fetchDevOtp(baseUrl: String, email: String): String {
     val client = HttpClient(CIO.create())
     try {
-        val body = client.post("${baseUrl.trimEnd('/')}/api/auth/send-otp") {
+        val response = client.post("${baseUrl.trimEnd('/')}/api/auth/send-otp") {
             contentType(ContentType.Application.Json)
             setBody("""{"name":"E2E Tester","email":"$email"}""")
-        }.bodyAsText()
+        }
+        val body = response.bodyAsText()
         return Json.parseToJsonElement(body).jsonObject["devOtp"]?.jsonPrimitive?.content
-            ?: error("Backend did not return devOtp; start it with the local profile (app.otp.dev-mode=true)")
+            ?: error("send-otp returned ${response.status} without devOtp: $body. Start the backend with the local profile (app.otp.dev-mode=true).")
     } finally {
         client.close()
     }
