@@ -19,6 +19,9 @@ Clients must parse them as instants.
 its `currency` (ISO 4217). `amountMinor: 1250` with `currency: "USD"` is 12.50 USD. `amountMinor: 1250` with `"JPY"` is
 1250 yen, because JPY has 0 minor digits. `"KWD"` has 3 digits, so `1250` is 1.250 KWD. Clients convert with the exponent
 of the ISO currency, never with floating-point math. `currency` is required on every write and is always returned.
+Rows written before v1 (by the web app) have no currency. A startup backfill sets it to the owner's currency, so `/api/v1`
+never returns `null`. A legacy amount with more decimal places than its currency allows is rounded HALF_UP and logged at
+WARN. It is not rejected, so the server log is the place to review those rows.
 
 **Errors.** Every error uses the standard error body:
 
@@ -70,7 +73,7 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 | `clientId` | string or null | Client-generated UUID. Stored in lower case. |
 | `description` | string | |
 | `amountMinor` | long | Integer minor units of `currency`. Never negative in practice (writes require positive). |
-| `currency` | string | ISO 4217 code, upper case. Set by the write. Rows written before v1 (for example by the web app) have no stored currency, so the owner's currency is reported. |
+| `currency` | string | ISO 4217 code, upper case. Set by the write. Legacy rows without a currency are backfilled to the owner's currency at startup, so this is never null. |
 | `date` | string | `yyyy-MM-dd` |
 | `categoryId` | long or null | Null when uncategorized, or after the category was deleted. |
 | `categoryName` | string or null | Name of the referenced category. |
@@ -332,6 +335,9 @@ retention window would otherwise keep rows the server has forgotten. This is a p
   - `401`, or `account_deleted`: abort the sync run and leave the outbox untouched. The client requires sign-in first.
   - Other `4xx` (for example `400`, `403`, `404`, or an unadopted `409` on update): mark the row failed and expose it
     to the UI. A failed row does not block other rows. A local edit to the same record, or an explicit retry, requeues it.
+- Stale cursors: a changes request answered with `410` means the saved cursor or watermark for that feed is no longer
+  valid. The client drops both for that feed and restarts it from the beginning once. A second `410` in the same pass
+  is an error. The server does not emit `410` today (see Tombstone retention), so this path is covered by a client test.
 - `updatedAt` is always set by the server. Clients should not send it.
 - `createdAt` is nullable.
 - An expense's `currency` can differ from the user's profile currency. Show it next to the amount.
