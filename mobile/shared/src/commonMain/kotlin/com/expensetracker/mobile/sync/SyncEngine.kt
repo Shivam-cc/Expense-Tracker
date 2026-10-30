@@ -14,6 +14,11 @@ import com.expensetracker.mobile.db.ExpenseFlowDatabase
 import com.expensetracker.mobile.db.Outbox
 import com.expensetracker.mobile.util.Money
 import com.expensetracker.mobile.util.Uuid7
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToOne
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
@@ -65,6 +70,59 @@ class SyncEngine(
 
     /** Local changes the server has not acknowledged yet, including rejected ones. */
     fun unsyncedCount(): Long = queries.countOutbox().executeAsOne()
+
+    /** When the last sync run finished, or null if none has. */
+    fun lastSyncedAt(): Instant? =
+        queries.selectSyncState(LAST_SYNC_KEY).executeAsOneOrNull()?.toLongOrNull()?.let(Instant::fromEpochMilliseconds)
+
+    fun observeLastSyncedAt(): Flow<Instant?> =
+        queries.selectSyncState(LAST_SYNC_KEY).asFlow().map { lastSyncedAt() }
+
+    fun observeUnsyncedCount(): Flow<Long> =
+        queries.countOutbox().asFlow().mapToOne(Dispatchers.Default)
+
+    fun observeFailedItems(): Flow<List<FailedOutboxItem>> =
+        queries.selectFailedOutbox().asFlow().map { failedOutboxItems() }
+
+    /** Requeues one rejected item so the next [sync] tries it again. */
+    suspend fun retryFailedItem(entity: OutboxEntity, clientId: String) {
+        mutex.withLock {
+            val op = queries.selectOutboxForClient(entity.name, clientId).executeAsOneOrNull() ?: return@withLock
+            if (op.failed == 1L) queries.requeueOutbox(op.seq)
+        }
+    }
+
+    /**
+     * Gives up on one rejected item and discards the local change behind it. A rejected CREATE never reached
+     * the server, so its local row is removed. For an UPDATE or DELETE the server still has the record, so the
+     * local row is removed and the feed restarts from the beginning, which brings the server's copy back on the
+     * next [sync]. Items that are not rejected are left alone.
+     */
+    suspend fun discardFailedItem(entity: OutboxEntity, clientId: String) {
+        mutex.withLock {
+            db.transaction {
+                val op = queries.selectOutboxForClient(entity.name, clientId).executeAsOneOrNull() ?: return@transaction
+                if (op.failed != 1L) return@transaction
+                queries.deleteOutbox(op.seq)
+                val feed = when (entity) {
+                    OutboxEntity.EXPENSE -> {
+                        queries.deleteExpenseById(clientId)
+                        "expense"
+                    }
+                    OutboxEntity.CATEGORY -> {
+                        val serverId = queries.selectCategoryById(clientId).executeAsOneOrNull()?.server_id
+                        queries.clearExpenseCategory(clientId = clientId, serverId = serverId)
+                        queries.deleteCategoryById(clientId)
+                        "category"
+                    }
+                }
+                if (op.operation != OutboxOperation.CREATE.name) {
+                    deleteState("$feed.cursor")
+                    deleteState("$feed.watermark")
+                }
+            }
+        }
+    }
 
     /** Runs [block] while no sync is in progress. */
     suspend fun <T> runExclusive(block: suspend () -> T): T = mutex.withLock { block() }

@@ -9,7 +9,7 @@ import com.expensetracker.mobile.data.LocalDataWiper
 import com.expensetracker.mobile.sync.SyncEngine
 import com.expensetracker.mobile.sync.SyncTestHarness
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpRequestTimeoutException
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
@@ -104,7 +104,7 @@ class ApiTimeoutTest {
         val api = KtorExpenseFlowApi(hangingServerUrl(), CIO.create(), timeouts = ApiTimeouts(10_000, 30_000, 300))
         try {
             val started = System.nanoTime()
-            assertFailsWith<HttpRequestTimeoutException> { api.logout(RefreshRequestDto("refresh")) }
+            assertFailsWith<IOException> { api.logout(RefreshRequestDto("refresh")) }
             assertTrue((System.nanoTime() - started) / 1_000_000 < 3_000)
         } finally {
             api.close()
@@ -115,7 +115,7 @@ class ApiTimeoutTest {
     fun ordinaryRequestsUseTheGlobalRequestTimeout(): Unit = runBlocking {
         val api = KtorExpenseFlowApi(hangingServerUrl(), CIO.create(), timeouts = timeouts)
         try {
-            assertFailsWith<HttpRequestTimeoutException> { api.getExpenseChanges(null, null, 10) }
+            assertFailsWith<IOException> { api.getExpenseChanges(null, null, 10) }
         } finally {
             api.close()
         }

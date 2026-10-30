@@ -31,3 +31,16 @@ data class CategoryRecord(
     val isGlobal: Boolean,
     val updatedAt: Instant,
 )
+
+/** Outcome of [CategoryRepository.checkName]. */
+sealed interface CategoryNameCheck {
+    data class Valid(val name: String) : CategoryNameCheck
+
+    data object Blank : CategoryNameCheck
+
+    /**
+     * The name matches an existing category or is reserved for a built-in one. [existing] is that category when
+     * this device has it, so it can be offered for selection. It is null when the built-in has not synced yet.
+     */
+    data class AlreadyExists(val name: String, val existing: CategoryRecord?, val builtIn: Boolean) : CategoryNameCheck
+}

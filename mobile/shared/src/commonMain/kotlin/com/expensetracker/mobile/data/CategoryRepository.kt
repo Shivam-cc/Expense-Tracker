@@ -73,12 +73,45 @@ class CategoryRepository(
         }
     }
 
+    /**
+     * Checks a name before [add] or [rename]. Pass the category's own id as [excludingId] when renaming, so
+     * keeping or re-casing its current name is allowed. A name that matches an existing category, or that is
+     * reserved for a built-in one, is reported as [CategoryNameCheck.AlreadyExists] so the UI can offer to use
+     * the existing category instead.
+     */
+    fun checkName(name: String, excludingId: String? = null): CategoryNameCheck {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return CategoryNameCheck.Blank
+        val existing = db.expenseFlowQueries.selectActiveCategories().executeAsList()
+            .firstOrNull { it.id != excludingId && it.name.equals(trimmed, ignoreCase = true) }
+        if (existing != null) {
+            return CategoryNameCheck.AlreadyExists(
+                name = existing.name,
+                existing = CategoryRecord(
+                    id = existing.id,
+                    serverId = existing.server_id,
+                    name = existing.name,
+                    icon = existing.icon,
+                    color = existing.color,
+                    isGlobal = existing.is_global != 0L,
+                    updatedAt = Instant.fromEpochMilliseconds(existing.updated_at),
+                ),
+                builtIn = existing.is_global != 0L || isReserved(trimmed),
+            )
+        }
+        if (isReserved(trimmed)) {
+            val reserved = RESERVED_NAMES.first { it.equals(trimmed, ignoreCase = true) }
+            return CategoryNameCheck.AlreadyExists(name = reserved, existing = null, builtIn = true)
+        }
+        return CategoryNameCheck.Valid(trimmed)
+    }
+
+    private fun isReserved(name: String): Boolean = RESERVED_NAMES.any { it.equals(name, ignoreCase = true) }
+
     private fun requireName(name: String): String {
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "Category name must not be blank" }
-        require(RESERVED_NAMES.none { it.equals(trimmed, ignoreCase = true) }) {
-            "\"$trimmed\" is a built-in category name"
-        }
+        require(!isReserved(trimmed)) { "\"$trimmed\" is a built-in category name" }
         return trimmed
     }
 
