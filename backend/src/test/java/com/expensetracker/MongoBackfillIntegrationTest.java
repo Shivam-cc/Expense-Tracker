@@ -73,6 +73,35 @@ class MongoBackfillIntegrationTest extends IntegrationTestBase {
         }
     }
 
+    @Test
+    void backfillGivesLegacyOwnersAndExpensesACurrencyAndKeepsExistingOnes() throws Exception {
+        String email = uniqueEmail();
+        register(email, PASSWORD);
+        Long userId = userRepository.findByEmail(email).orElseThrow().getId();
+        template.getCollection("users").updateOne(new Document("_id", userId),
+                new Document("$unset", new Document("currency", "")));
+
+        long base = 800_000_000_000L + ThreadLocalRandom.current().nextLong(1_000_000_000L);
+        long legacyExpenseId = base + 10;
+        long keptExpenseId = base + 11;
+        Date createdAt = Date.from(Instant.parse("2026-03-15T10:15:30Z"));
+        template.getCollection("expenses").insertOne(new Document("_id", legacyExpenseId)
+                .append("user", userId).append("description", "legacy").append("createdAt", createdAt));
+        template.getCollection("expenses").insertOne(new Document("_id", keptExpenseId)
+                .append("user", userId).append("description", "kept").append("currency", "EUR")
+                .append("createdAt", createdAt));
+        try {
+            initializer.run(new DefaultApplicationArguments());
+
+            assertThat(findById("users", userId).getString("currency")).isEqualTo("INR");
+            assertThat(findById("expenses", legacyExpenseId).getString("currency")).isEqualTo("INR");
+            assertThat(findById("expenses", keptExpenseId).getString("currency")).isEqualTo("EUR");
+        } finally {
+            template.getCollection("expenses").deleteMany(new Document("_id",
+                    new Document("$in", List.of(legacyExpenseId, keptExpenseId))));
+        }
+    }
+
     private Document findById(String collection, long id) {
         return template.getCollection(collection).find(new Document("_id", id)).first();
     }

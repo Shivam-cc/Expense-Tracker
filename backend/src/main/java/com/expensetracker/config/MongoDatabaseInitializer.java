@@ -1,5 +1,6 @@
 package com.expensetracker.config;
 
+import com.mongodb.client.MongoCollection;
 import com.expensetracker.model.*;
 import lombok.RequiredArgsConstructor;
 import org.bson.Document;
@@ -15,11 +16,15 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
 public class MongoDatabaseInitializer implements ApplicationRunner {
+    private static final String DEFAULT_CURRENCY = new User().getCurrency();
+
     private final MongoTemplate template;
     private final MongoDocumentIds ids;
 
@@ -50,6 +55,7 @@ public class MongoDatabaseInitializer implements ApplicationRunner {
         ensureSyncIndexes();
         seedCategories();
         backfillUpdatedAt();
+        backfillCurrencies();
     }
 
     /** Sync pulls scan by owner and updatedAt; clientId is unique per owner only when present, so create retries are idempotent. */
@@ -76,6 +82,28 @@ public class MongoDatabaseInitializer implements ApplicationRunner {
                 new Document("$ifNull", List.of("$createdAt", "$$NOW")))));
         for (Class<?> type : new Class<?>[]{Expense.class, Category.class}) {
             template.getCollection(template.getCollectionName(type)).updateMany(missingUpdatedAt, pipeline);
+        }
+    }
+
+    /**
+     * Gives every owner and every legacy expense a currency, so /api/v1 never returns null. Legacy expenses take
+     * their owner's currency, which matches the read-side fallback. Documents that already have a currency are
+     * never matched, so reruns are no-ops.
+     */
+    private void backfillCurrencies() {
+        MongoCollection<Document> users = template.getCollection(template.getCollectionName(User.class));
+        MongoCollection<Document> expenses = template.getCollection(template.getCollectionName(Expense.class));
+        users.updateMany(new Document("currency", null),
+                new Document("$set", new Document("currency", DEFAULT_CURRENCY)));
+        Set<Object> ownerIds = new LinkedHashSet<>();
+        for (Document legacy : expenses.find(new Document("currency", null)).projection(new Document("user", 1))) {
+            ownerIds.add(legacy.get("user"));
+        }
+        for (Object userId : ownerIds) {
+            Document owner = users.find(new Document("_id", userId)).first();
+            String currency = owner == null ? DEFAULT_CURRENCY : owner.getString("currency");
+            expenses.updateMany(new Document("user", userId).append("currency", null),
+                    new Document("$set", new Document("currency", currency)));
         }
     }
 
