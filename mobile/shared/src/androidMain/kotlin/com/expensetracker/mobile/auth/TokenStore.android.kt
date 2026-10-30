@@ -10,8 +10,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.expensetracker.mobile.android.AppContextHolder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 import java.security.GeneralSecurityException
 import java.security.KeyStore
@@ -23,7 +24,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 actual class TokenStore actual constructor() {
 
-    actual fun load(): StoredSession? = runBlocking {
+    actual suspend fun load(): StoredSession? = withContext(Dispatchers.IO) {
         val prefs = dataStore.data.first()
         try {
             decodeSession(prefs)
@@ -36,28 +37,27 @@ actual class TokenStore actual constructor() {
         }
     }
 
-    actual fun save(session: StoredSession) {
+    actual suspend fun save(session: StoredSession) = withContext(Dispatchers.IO) {
         // Each value is encrypted with a fresh IV; DataStore.edit is atomic and completes before returning,
         // so a rotated refresh token is on disk when save returns (same guarantee the old commit() gave).
-        runBlocking {
-            dataStore.edit { prefs ->
-                prefs[KEY_ACCESS_TOKEN] = encrypt(session.accessToken)
-                prefs[KEY_ACCESS_EXPIRES_AT] = encrypt(session.accessExpiresAt.toEpochMilliseconds().toString())
-                prefs[KEY_REFRESH_TOKEN] = encrypt(session.refreshToken)
-                prefs[KEY_EMAIL] = encrypt(session.email)
-                prefs[KEY_NAME] = encrypt(session.name)
-                val currency = session.currency
-                if (currency != null) {
-                    prefs[KEY_CURRENCY] = encrypt(currency)
-                } else {
-                    prefs.remove(KEY_CURRENCY)
-                }
+        dataStore.edit { prefs ->
+            prefs[KEY_ACCESS_TOKEN] = encrypt(session.accessToken)
+            prefs[KEY_ACCESS_EXPIRES_AT] = encrypt(session.accessExpiresAt.toEpochMilliseconds().toString())
+            prefs[KEY_REFRESH_TOKEN] = encrypt(session.refreshToken)
+            prefs[KEY_EMAIL] = encrypt(session.email)
+            prefs[KEY_NAME] = encrypt(session.name)
+            val currency = session.currency
+            if (currency != null) {
+                prefs[KEY_CURRENCY] = encrypt(currency)
+            } else {
+                prefs.remove(KEY_CURRENCY)
             }
         }
+        Unit
     }
 
-    actual fun clear() {
-        runBlocking { clearStore() }
+    actual suspend fun clear() = withContext(Dispatchers.IO) {
+        clearStore()
     }
 
     private suspend fun clearStore() {

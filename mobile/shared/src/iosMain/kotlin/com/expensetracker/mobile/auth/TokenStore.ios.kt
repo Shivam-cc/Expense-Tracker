@@ -51,7 +51,7 @@ private class SessionRecord(
 
 /** Stores the session as one JSON-encoded generic-password Keychain item. */
 actual class TokenStore actual constructor() {
-    actual fun load(): StoredSession? {
+    actual suspend fun load(): StoredSession? {
         val json = readItem() ?: return null
         val record = runCatching { Json.decodeFromString(SessionRecord.serializer(), json) }.getOrNull() ?: return null
         return StoredSession(
@@ -64,7 +64,7 @@ actual class TokenStore actual constructor() {
         )
     }
 
-    actual fun save(session: StoredSession) {
+    actual suspend fun save(session: StoredSession) {
         val json = Json.encodeToString(
             SessionRecord.serializer(),
             SessionRecord(
@@ -81,7 +81,7 @@ actual class TokenStore actual constructor() {
         writeItem(json)
     }
 
-    actual fun clear() {
+    actual suspend fun clear() {
         val query = cfDictionary(
             kSecClass to kSecClassGenericPassword,
             kSecAttrService to KEYCHAIN_SERVICE,

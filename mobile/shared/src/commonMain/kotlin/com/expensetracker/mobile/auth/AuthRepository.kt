@@ -10,8 +10,10 @@ import com.expensetracker.mobile.api.RefreshRequestDto
 import com.expensetracker.mobile.api.RegisterRequestDto
 import com.expensetracker.mobile.api.SendOtpRequestDto
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -42,7 +44,7 @@ class AuthRepository(
     suspend fun login(email: String, password: String): StoredSession =
         saveFrom(api.login(AuthRequestDto(email, password)))
 
-    fun currentSession(): StoredSession? = store.load()
+    suspend fun currentSession(): StoredSession? = store.load()
 
     override suspend fun currentAccessToken(): String? {
         val session = store.load() ?: return null
@@ -66,7 +68,8 @@ class AuthRepository(
         } catch (e: Exception) {
             // Ignored on purpose: the local session is cleared in finally.
         } finally {
-            store.clear()
+            // Runs even if the caller was cancelled, so tokens are never left behind.
+            withContext(NonCancellable) { store.clear() }
         }
     }
 
@@ -89,7 +92,7 @@ class AuthRepository(
         }
     }
 
-    private fun saveFrom(response: AuthResponseDto): StoredSession {
+    private suspend fun saveFrom(response: AuthResponseDto): StoredSession {
         val session = StoredSession(
             accessToken = response.token,
             accessExpiresAt = clock.now() + response.expiresIn.seconds,

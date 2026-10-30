@@ -5,7 +5,7 @@ package com.expensetracker.mobile.auth
  * (Android: DataStore with values encrypted by an Android Keystore AES-GCM key, iOS: Keychain). The JVM actual is in-memory.
  */
 expect class TokenStore() {
-    fun load(): StoredSession?
-    fun save(session: StoredSession)
-    fun clear()
+    suspend fun load(): StoredSession?
+    suspend fun save(session: StoredSession)
+    suspend fun clear()
 }
