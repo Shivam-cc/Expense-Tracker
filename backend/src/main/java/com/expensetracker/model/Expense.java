@@ -36,6 +36,9 @@ public class Expense implements IdentifiedDocument {
     @Field(targetType = FieldType.DECIMAL128)
     private BigDecimal amount;
 
+    /** ISO 4217 code. Null on rows written before v1 currency support; those use the owner's currency. */
+    private String currency;
+
     @NotNull
     private LocalDate date;
 

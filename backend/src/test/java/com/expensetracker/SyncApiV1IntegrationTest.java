@@ -60,10 +60,18 @@ class SyncApiV1IntegrationTest extends IntegrationTestBase {
             body.put("clientId", clientId);
         }
         body.put("description", description);
-        body.put("amount", new BigDecimal("12.50"));
+        body.put("amountMinor", 1250L);
+        body.put("currency", "INR");
         body.put("date", "2026-03-15");
         body.put("categoryId", categoryId);
         body.put("notes", null);
+        return body;
+    }
+
+    private static Map<String, Object> amountBody(Long amountMinor, String currency) {
+        Map<String, Object> body = expenseBody(UUID.randomUUID().toString(), "Amount test", null);
+        body.put("amountMinor", amountMinor);
+        body.put("currency", currency);
         return body;
     }
 
@@ -130,7 +138,8 @@ class SyncApiV1IntegrationTest extends IntegrationTestBase {
         assertThat(retried.get("id").asLong()).isEqualTo(created.get("id").asLong());
         assertThat(retried.get("description").asText()).isEqualTo("Coffee");
         assertThat(retried.get("clientId").asText()).isEqualTo(clientId);
-        assertThat(created.get("amount").isNumber()).isTrue();
+        assertThat(created.get("amountMinor").asLong()).isEqualTo(1250L);
+        assertThat(created.get("currency").asText()).isEqualTo("INR");
         assertThat(created.get("date").asText()).isEqualTo("2026-03-15");
         assertThat(created.get("updatedAt").asText()).endsWith("Z");
         assertThat(created.get("deletedAt").isNull()).isTrue();
@@ -145,6 +154,69 @@ class SyncApiV1IntegrationTest extends IntegrationTestBase {
 
         postV1("/api/v1/expenses", alice, expenseBody(null, "No client id", null), 400);
         postV1("/api/v1/expenses", alice, expenseBody("not-a-uuid", "Bad client id", null), 400);
+    }
+
+    @Test
+    void amountsRoundTripAsExactMinorUnits() throws Exception {
+        JsonNode alice = register(uniqueEmail(), PASSWORD);
+
+        assertAmountRoundTrip(alice, 1L, "USD", "0.01");
+        assertAmountRoundTrip(alice, 125050L, "USD", "1250.50");
+        assertAmountRoundTrip(alice, 999_999_999_999L, "USD", "9999999999.99");
+        assertAmountRoundTrip(alice, 125000L, "JPY", "125000");
+        assertAmountRoundTrip(alice, 1250L, "KWD", "1.250");
+    }
+
+    private void assertAmountRoundTrip(JsonNode auth, long minor, String currency, String expectedDecimal)
+            throws Exception {
+        JsonNode created = postV1("/api/v1/expenses", auth, amountBody(minor, currency), 201);
+        long id = created.get("id").asLong();
+
+        assertThat(created.get("amountMinor").asLong()).isEqualTo(minor);
+        assertThat(created.get("currency").asText()).isEqualTo(currency);
+        assertThat(mongoTemplate.findById(id, Expense.class).getAmount().toPlainString()).isEqualTo(expectedDecimal);
+
+        JsonNode fromFeed = feedItem(auth, id);
+        assertThat(fromFeed.get("amountMinor").asLong()).isEqualTo(minor);
+        assertThat(fromFeed.get("currency").asText()).isEqualTo(currency);
+    }
+
+    private JsonNode feedItem(JsonNode auth, long id) throws Exception {
+        return collectFeed("/api/v1/expenses/changes", auth, 100).stream()
+                .filter(item -> item.get("id").asLong() == id)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Expense " + id + " missing from changes feed"));
+    }
+
+    @Test
+    void amountAndCurrencyAreValidated() throws Exception {
+        JsonNode alice = register(uniqueEmail(), PASSWORD);
+
+        postV1("/api/v1/expenses", alice, amountBody(null, "USD"), 400);
+        postV1("/api/v1/expenses", alice, amountBody(0L, "USD"), 400);
+        postV1("/api/v1/expenses", alice, amountBody(-5L, "USD"), 400);
+        postV1("/api/v1/expenses", alice, amountBody(1_000_000_000_000L, "USD"), 400);
+        postV1("/api/v1/expenses", alice, amountBody(100L, null), 400);
+        postV1("/api/v1/expenses", alice, amountBody(100L, "EURO"), 400);
+        postV1("/api/v1/expenses", alice, amountBody(100L, "ZZZ"), 400);
+
+        JsonNode lowercase = postV1("/api/v1/expenses", alice, amountBody(100L, " usd "), 201);
+        assertThat(lowercase.get("currency").asText()).isEqualTo("USD");
+    }
+
+    @Test
+    void legacyRowsWithoutCurrencyReportTheOwnersCurrencyAndRoundHalfUp() throws Exception {
+        JsonNode alice = register(uniqueEmail(), PASSWORD);
+        long id = postV1("/api/v1/expenses", alice, amountBody(1250L, "USD"), 201).get("id").asLong();
+
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("id").is(id)),
+                new Update().unset("currency").set("amount", new BigDecimal("12.505")),
+                Expense.class);
+
+        JsonNode legacy = feedItem(alice, id);
+        assertThat(legacy.get("currency").asText()).isEqualTo("INR");
+        assertThat(legacy.get("amountMinor").asLong()).isEqualTo(1251L);
     }
 
     @Test

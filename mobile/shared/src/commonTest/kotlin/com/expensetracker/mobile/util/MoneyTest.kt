@@ -26,4 +26,17 @@ class MoneyTest {
             assertFailsWith<IllegalArgumentException>(input) { Money.parseMinor(input) }
         }
     }
+
+    @Test
+    fun usesCurrencyExponentForZeroAndThreeDecimalCurrencies() {
+        assertEquals(0, Money.minorDigits("JPY"))
+        assertEquals(3, Money.minorDigits("KWD"))
+        assertEquals(2, Money.minorDigits("INR"))
+
+        assertEquals(1250L, Money.parseMinor("1250", 0))
+        assertEquals("1250", Money.formatMinor(1250, 0))
+        assertEquals(1250L, Money.parseMinor("1.250", 3))
+        assertEquals("1.250", Money.formatMinor(1250, 3))
+        assertFailsWith<IllegalArgumentException> { Money.parseMinor("12.5", 0) }
+    }
 }

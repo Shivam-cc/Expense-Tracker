@@ -36,7 +36,7 @@ public class ExpenseSyncService {
                 cursor,
                 limit,
                 expense -> new SyncCursorCodec.Position(expense.getUpdatedAt(), expense.getId()),
-                this::toResponse);
+                expense -> toResponse(expense, user.getCurrency()));
     }
 
     /**
@@ -46,14 +46,16 @@ public class ExpenseSyncService {
     public SyncWriteResult<ExpenseV1Response> create(ExpenseV1Request request, User user) {
         Optional<Expense> existing = findByClientId(user.getId(), request.getClientId());
         if (existing.isPresent()) {
-            return new SyncWriteResult<>(toResponse(existing.get()), false);
+            return new SyncWriteResult<>(toResponse(existing.get(), user.getCurrency()), false);
         }
 
+        String currency = MinorUnits.requireKnownCurrency(request.getCurrency());
         Category category = resolveCategory(request.getCategoryId(), user.getId());
         Expense expense = Expense.builder()
                 .clientId(request.getClientId())
                 .description(request.getDescription())
-                .amount(request.getAmount())
+                .amount(MinorUnits.toAmount(request.getAmountMinor(), currency))
+                .currency(currency)
                 .date(request.getDate())
                 .category(category)
                 .user(user)
@@ -62,10 +64,10 @@ public class ExpenseSyncService {
                 .build();
 
         try {
-            return new SyncWriteResult<>(toResponse(mongoTemplate.insert(expense)), true);
+            return new SyncWriteResult<>(toResponse(mongoTemplate.insert(expense), user.getCurrency()), true);
         } catch (DuplicateKeyException e) {
             Expense winner = findByClientId(user.getId(), request.getClientId()).orElseThrow(() -> e);
-            return new SyncWriteResult<>(toResponse(winner), false);
+            return new SyncWriteResult<>(toResponse(winner, user.getCurrency()), false);
         }
     }
 
@@ -74,16 +76,18 @@ public class ExpenseSyncService {
     public ExpenseV1Response update(Long id, ExpenseV1Request request, User user) {
         Expense expense = findLive(id, user.getId())
                 .orElseThrow(() -> new NotFoundException("Expense not found"));
+        String currency = MinorUnits.requireKnownCurrency(request.getCurrency());
         Category category = resolveCategory(request.getCategoryId(), user.getId());
 
         expense.setDescription(request.getDescription());
-        expense.setAmount(request.getAmount());
+        expense.setAmount(MinorUnits.toAmount(request.getAmountMinor(), currency));
+        expense.setCurrency(currency);
         expense.setDate(request.getDate());
         expense.setCategory(category);
         expense.setNotes(request.getNotes());
         expense.setUpdatedAt(SyncTime.now());
 
-        return toResponse(mongoTemplate.save(expense));
+        return toResponse(mongoTemplate.save(expense), user.getCurrency());
     }
 
     /**
@@ -128,13 +132,19 @@ public class ExpenseSyncService {
         return Criteria.where("id").is(id).and("user").is(userId);
     }
 
-    private ExpenseV1Response toResponse(Expense expense) {
+    /**
+     * Rows written before v1 have no currency and are reported in the owner's currency. The changes feed
+     * uses this for every row, so a deleted-user or missing-currency row can never fail the whole page.
+     */
+    private ExpenseV1Response toResponse(Expense expense, String ownerCurrency) {
         Category category = expense.getCategory();
+        String currency = expense.getCurrency() != null ? expense.getCurrency() : ownerCurrency;
         return ExpenseV1Response.builder()
                 .id(expense.getId())
                 .clientId(expense.getClientId())
                 .description(expense.getDescription())
-                .amount(expense.getAmount())
+                .amountMinor(MinorUnits.toMinor(expense.getAmount(), currency))
+                .currency(currency)
                 .date(expense.getDate())
                 .categoryId(category != null ? category.getId() : null)
                 .categoryName(category != null ? category.getName() : null)

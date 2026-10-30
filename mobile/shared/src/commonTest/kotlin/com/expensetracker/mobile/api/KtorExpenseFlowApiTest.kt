@@ -7,6 +7,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.ktor.serialization.JsonConvertException
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
@@ -26,8 +27,8 @@ private val emptyPageJson =
 private val authJson =
     """{"token":"access-1","refreshToken":"refresh-1","expiresIn":900,"name":"Asha","email":"asha@example.com"}"""
 
-private fun expenseJson(amountJson: String) =
-    """{"id":1,"clientId":"c1","description":"Lunch","amount":$amountJson,"date":"2026-01-01","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}"""
+private fun expenseJson(amountMinorJson: String, currency: String = "INR") =
+    """{"id":1,"clientId":"c1","description":"Lunch","amountMinor":$amountMinorJson,"currency":"$currency","date":"2026-01-01","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}"""
 
 private val categoryJson =
     """{"id":3,"clientId":"cat-1","name":"Food","updatedAt":"2026-01-01T00:00:00Z"}"""
@@ -35,7 +36,8 @@ private val categoryJson =
 private val writeRequest = ExpenseWriteDto(
     clientId = "c1",
     description = "Lunch",
-    amount = "12.50",
+    amountMinor = 1250L,
+    currency = "INR",
     date = LocalDate.parse("2026-01-01"),
 )
 
@@ -233,7 +235,7 @@ class KtorExpenseFlowApiTest {
     @Test
     fun createExpenseAcceptsCreatedAndOk() = runTest {
         for (status in listOf(HttpStatusCode.Created, HttpStatusCode.OK)) {
-            val engine = MockEngine { respond(expenseJson("12.50"), status, jsonHeaders) }
+            val engine = MockEngine { respond(expenseJson("1250"), status, jsonHeaders) }
             val api = KtorExpenseFlowApi(BASE_URL, engine, FakeTokens("tok"))
 
             val created = api.createExpense(writeRequest)
@@ -258,23 +260,34 @@ class KtorExpenseFlowApiTest {
     }
 
     @Test
-    fun amountDecodesFromJsonNumber() = runTest {
-        val engine = MockEngine { respond(expenseJson("12.5"), HttpStatusCode.OK, jsonHeaders) }
-        val api = KtorExpenseFlowApi(BASE_URL, engine, FakeTokens("tok"))
+    fun amountMinorRoundTripsExactlyIncludingLargeValues() = runTest {
+        for (minor in listOf(1L, 1250L, 999_999_999_999L)) {
+            val engine = MockEngine { respond(expenseJson("$minor"), HttpStatusCode.OK, jsonHeaders) }
+            val api = KtorExpenseFlowApi(BASE_URL, engine, FakeTokens("tok"))
 
-        val dto = api.updateExpense(1, writeRequest)
+            val dto = api.updateExpense(1, writeRequest)
 
-        assertEquals("12.5", dto.amount)
+            assertEquals(minor, dto.amountMinor)
+        }
     }
 
     @Test
-    fun amountDecodesFromJsonString() = runTest {
-        val engine = MockEngine { respond(expenseJson("\"12.50\""), HttpStatusCode.OK, jsonHeaders) }
+    fun currencyIsDecodedFromResponse() = runTest {
+        val engine = MockEngine { respond(expenseJson("500", currency = "JPY"), HttpStatusCode.OK, jsonHeaders) }
         val api = KtorExpenseFlowApi(BASE_URL, engine, FakeTokens("tok"))
 
         val dto = api.updateExpense(1, writeRequest)
 
-        assertEquals("12.50", dto.amount)
+        assertEquals("JPY", dto.currency)
+        assertEquals(500L, dto.amountMinor)
+    }
+
+    @Test
+    fun decimalAmountMinorIsRejected() = runTest {
+        val engine = MockEngine { respond(expenseJson("12.50"), HttpStatusCode.OK, jsonHeaders) }
+        val api = KtorExpenseFlowApi(BASE_URL, engine, FakeTokens("tok"))
+
+        assertFailsWith<JsonConvertException> { api.updateExpense(1, writeRequest) }
     }
 
     @Test

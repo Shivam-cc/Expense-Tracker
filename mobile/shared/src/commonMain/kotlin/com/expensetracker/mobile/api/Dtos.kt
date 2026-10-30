@@ -2,36 +2,19 @@ package com.expensetracker.mobile.api
 
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.JsonDecoder
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Money travels as a decimal string ("12.50") so no float is ever involved.
- * On decode it also accepts a bare JSON number, which is what the backend returns.
+ * Amounts travel as integer minor units of [ExpenseDto.currency] (ISO 4217), for example 1250 USD cents = 12.50.
+ * No float or decimal string is involved. See docs/api/mobile-sync-v1.md.
  */
-object DecimalStringSerializer : KSerializer<String> {
-    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("DecimalString", PrimitiveKind.STRING)
-
-    override fun serialize(encoder: Encoder, value: String) = encoder.encodeString(value)
-
-    override fun deserialize(decoder: Decoder): String =
-        if (decoder is JsonDecoder) decoder.decodeJsonElement().jsonPrimitive.content
-        else decoder.decodeString()
-}
-
 @Serializable
 data class ExpenseDto(
     val id: Long,
     val clientId: String? = null,
     val description: String,
-    @Serializable(with = DecimalStringSerializer::class) val amount: String,
+    val amountMinor: Long,
+    val currency: String,
     val date: LocalDate,
     val categoryId: Long? = null,
     val categoryName: String? = null,
@@ -46,7 +29,8 @@ data class ExpenseDto(
 data class ExpenseWriteDto(
     val clientId: String,
     val description: String,
-    @Serializable(with = DecimalStringSerializer::class) val amount: String,
+    val amountMinor: Long,
+    val currency: String,
     val date: LocalDate,
     val categoryId: Long? = null,
     val notes: String? = null,

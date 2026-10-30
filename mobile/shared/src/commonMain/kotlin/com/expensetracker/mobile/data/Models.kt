@@ -12,6 +12,7 @@ data class ExpenseRecord(
     val serverId: Long?,
     val description: String,
     val amountMinor: Long,
+    val currency: String,
     val amount: String,
     val date: LocalDate,
     val categoryClientId: String?,

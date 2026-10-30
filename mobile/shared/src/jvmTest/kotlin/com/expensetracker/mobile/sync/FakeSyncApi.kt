@@ -37,14 +37,15 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
 
     private var nextId = 1L
 
-    /** Seeds a record as if another client created it on the server. */
-    fun serverCreateExpense(description: String, amount: String, date: LocalDate): ExpenseDto {
+    /** Seeds a record as if another client created it on the server. Amounts are minor units of [currency]. */
+    fun serverCreateExpense(description: String, amountMinor: Long, date: LocalDate, currency: String = "INR"): ExpenseDto {
         val at = clock.now()
         val id = nextId++
         val dto = ExpenseDto(
             id = id,
             description = description,
-            amount = amount,
+            amountMinor = amountMinor,
+            currency = currency,
             date = date,
             createdAt = at,
             updatedAt = at,
@@ -53,9 +54,9 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
         return dto
     }
 
-    fun serverChangeExpense(id: Long, description: String, amount: String, at: Instant) {
+    fun serverChangeExpense(id: Long, description: String, amountMinor: Long, at: Instant) {
         val existing = expenses.getValue(id)
-        expenses[id] = existing.copy(description = description, amount = amount, updatedAt = at)
+        expenses[id] = existing.copy(description = description, amountMinor = amountMinor, updatedAt = at)
     }
 
     fun serverDeleteExpense(id: Long, at: Instant) {
@@ -91,7 +92,8 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
             id = id,
             clientId = request.clientId,
             description = request.description,
-            amount = request.amount,
+            amountMinor = request.amountMinor,
+            currency = request.currency,
             date = request.date,
             categoryId = request.categoryId,
             categoryName = request.categoryId?.let { categories[it]?.name },
@@ -109,7 +111,8 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
         val existing = expenses[id] ?: throw ApiException(404, "Expense $id not found")
         val dto = existing.copy(
             description = request.description,
-            amount = request.amount,
+            amountMinor = request.amountMinor,
+            currency = request.currency,
             date = request.date,
             categoryId = request.categoryId,
             categoryName = request.categoryId?.let { categories[it]?.name },

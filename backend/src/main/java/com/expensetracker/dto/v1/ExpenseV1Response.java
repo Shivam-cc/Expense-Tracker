@@ -5,7 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -17,7 +16,10 @@ public class ExpenseV1Response {
     private Long id;
     private String clientId;
     private String description;
-    private BigDecimal amount;
+    /** Integer minor units of {@link #currency}. */
+    private Long amountMinor;
+    /** ISO 4217 code. Falls back to the owner's currency for legacy rows. */
+    private String currency;
     private LocalDate date;
     private Long categoryId;
     private String categoryName;

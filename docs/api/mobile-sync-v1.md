@@ -13,7 +13,12 @@ token are rejected by the existing authentication layer.
 for example `2026-10-29T10:00:00Z`. Values may include fractional seconds, for example `2026-10-29T10:00:00.120Z`.
 Clients must parse them as instants.
 
-**Dates and amounts.** `date` is an ISO local date (`yyyy-MM-dd`). `amount` is a JSON number with at most 2 decimal places.
+**Dates.** `date` is an ISO local date (`yyyy-MM-dd`).
+
+**Amounts.** Money is never a float on the wire. An expense carries `amountMinor`, a JSON integer in the minor unit of
+its `currency` (ISO 4217). `amountMinor: 1250` with `currency: "USD"` is 12.50 USD. `amountMinor: 1250` with `"JPY"` is
+1250 yen, because JPY has 0 minor digits. `"KWD"` has 3 digits, so `1250` is 1.250 KWD. Clients convert with the exponent
+of the ISO currency, never with floating-point math. `currency` is required on every write and is always returned.
 
 **Errors.** Every error uses the standard error body:
 
@@ -46,7 +51,8 @@ Validation failures (400) add an `errors` object that maps each field to a messa
   "id": 42,
   "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b",
   "description": "Coffee",
-  "amount": 4.5,
+  "amountMinor": 450,
+  "currency": "USD",
   "date": "2026-10-28",
   "categoryId": 7,
   "categoryName": "Food",
@@ -62,7 +68,8 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 | `id` | long | Server id. Use it for PUT and DELETE. |
 | `clientId` | string or null | Client-generated UUID. Stored in lower case. |
 | `description` | string | |
-| `amount` | number | At most 2 decimals. |
+| `amountMinor` | long | Integer minor units of `currency`. Never negative in practice (writes require positive). |
+| `currency` | string | ISO 4217 code, upper case. Set by the write. Rows written before v1 (for example by the web app) have no stored currency, so the owner's currency is reported. |
 | `date` | string | `yyyy-MM-dd` |
 | `categoryId` | long or null | Null when uncategorized, or after the category was deleted. |
 | `categoryName` | string or null | Name of the referenced category. |
@@ -77,7 +84,8 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 {
   "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b",
   "description": "Coffee",
-  "amount": 4.5,
+  "amountMinor": 450,
+  "currency": "USD",
   "date": "2026-10-28",
   "categoryId": 7,
   "notes": null
@@ -88,7 +96,8 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 |---|---|
 | `clientId` | Required on POST, must be a UUID. Ignored on PUT. |
 | `description` | Required, at most 255 characters. |
-| `amount` | Required, positive, at most 10 integer digits and 2 decimals. |
+| `amountMinor` | Required, a JSON integer, from 1 to 999999999999. Interpreted in `currency` minor units. Strings and decimals are rejected. |
+| `currency` | Required, a known ISO 4217 code. Trimmed and upper-cased by the server, so `" usd "` is stored as `USD`. Unknown codes return `400`. |
 | `date` | Required, `yyyy-MM-dd`. |
 | `categoryId` | Optional. Must be one of the caller's live categories or a live global category. |
 | `notes` | Optional, at most 1000 characters. |
@@ -177,11 +186,11 @@ GET /api/v1/expenses/changes?updatedSince=2026-10-28T00:00:00Z&limit=2
 ```json
 {
   "items": [
-    { "id": 42, "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b", "description": "Coffee", "amount": 4.5,
-      "date": "2026-10-28", "categoryId": 7, "categoryName": "Food", "notes": null,
+    { "id": 42, "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b", "description": "Coffee", "amountMinor": 450,
+      "currency": "USD", "date": "2026-10-28", "categoryId": 7, "categoryName": "Food", "notes": null,
       "createdAt": "2026-10-28T09:15:00Z", "updatedAt": "2026-10-28T09:15:00Z", "deletedAt": null },
-    { "id": 43, "clientId": "0c1d2e3f-4a5b-4c6d-8e7f-900112233445", "description": "Old lunch", "amount": 12,
-      "date": "2026-10-20", "categoryId": null, "categoryName": null, "notes": null,
+    { "id": 43, "clientId": "0c1d2e3f-4a5b-4c6d-8e7f-900112233445", "description": "Old lunch", "amountMinor": 1200,
+      "currency": "USD", "date": "2026-10-20", "categoryId": null, "categoryName": null, "notes": null,
       "createdAt": "2026-10-20T12:00:00Z", "updatedAt": "2026-10-28T09:20:00Z", "deletedAt": "2026-10-28T09:20:00Z" }
   ],
   "nextCursor": "MTc4MDA2NDAwMDAwMHw0Mw",
@@ -221,15 +230,15 @@ Creates an expense. The request is idempotent by `clientId` for the caller.
 
 ```
 POST /api/v1/expenses
-{ "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b", "description": "Coffee", "amount": 4.5,
-  "date": "2026-10-28", "categoryId": 7, "notes": null }
+{ "clientId": "3f1c2a7e-8b4d-4e5f-9a6b-7c8d9e0f1a2b", "description": "Coffee", "amountMinor": 450,
+  "currency": "USD", "date": "2026-10-28", "categoryId": 7, "notes": null }
 ```
 
 Response `201` on first use, `200` on any retry with the same `clientId`. The body is an `ExpenseV1` object.
 
 ### PUT /api/v1/expenses/{id}
 
-Replaces the mutable fields of the expense: `description`, `amount`, `date`, `categoryId`, and `notes`. Omitted
+Replaces the mutable fields of the expense: `description`, `amountMinor`, `currency`, `date`, `categoryId`, and `notes`. Omitted
 optional fields are set to null. The `clientId` in the body is ignored, so it may be omitted.
 
 - Last write wins. The server sets `updatedAt`.
@@ -292,6 +301,20 @@ Soft delete of a category owned by the caller.
 - **Last write wins.** PUT replaces the fields and sets `updatedAt` to the server time. The server does not merge.
 - **Global categories.** These have no owner and `clientId` is null. They are read-only, and PUT/DELETE return 403.
 
+### Tombstone retention (proposed, not implemented)
+
+Tombstones cannot be purged while a client might still depend on them. A client that was offline longer than the
+retention window would otherwise keep rows the server has forgotten. This is a proposal for review. No purge job exists.
+
+- **Window.** Keep a tombstone for 180 days after `deletedAt`. After that, it may be hard-deleted.
+- **Stale cursors.** A changes request whose `updatedSince` is older than the retention horizon (now minus 180 days)
+  returns `410 Gone`. Clients must then discard local data for that account and do a full sync from no parameters.
+  Local outbox writes must be pushed first.
+- **Full syncs** (no `updatedSince` or `cursor`) are not affected. They never need tombstones older than the window
+  because the server already omits them.
+- **Implementation order when approved:** add the scheduled purge, then the `410` check in the changes endpoints, and
+  add a test for each. Until then, tombstones are kept indefinitely, which is safe but grows storage.
+
 ## Notes for clients
 
 - A category deleted on the server clears `categoryId` on its expenses. Clients should apply the expense feed after
@@ -299,6 +322,15 @@ Soft delete of a category owned by the caller.
 - Creating or editing an expense with a deleted category returns 404. Clients should clear the selection and retry.
 - `updatedAt` is always set by the server. Clients should not send it.
 - `createdAt` is nullable.
+- An expense's `currency` can differ from the user's profile currency. Show it next to the amount.
+- If `/api/auth/refresh` returns `401` or `404` for a deleted account, the client must wipe its local database, outbox,
+  and tokens. The account is gone, so nothing can be synced.
+
+## Verification
+
+`mobile/shared/src/jvmTest/.../SyncE2ETest` runs this contract against a live local backend: register, OTP,
+login, offline writes, sync, edit, delete, second device, and refresh rotation. It skips when the backend is not
+reachable. See the README "Mobile App" section for how to run it.
 
 ## Example session
 

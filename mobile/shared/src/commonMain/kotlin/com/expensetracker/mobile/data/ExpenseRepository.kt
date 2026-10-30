@@ -30,7 +30,8 @@ class ExpenseRepository(
                         serverId = row.server_id,
                         description = row.description,
                         amountMinor = row.amount_minor,
-                        amount = Money.formatMinor(row.amount_minor),
+                        currency = row.currency,
+                        amount = Money.formatMinor(row.amount_minor, Money.minorDigits(row.currency)),
                         date = LocalDate.parse(row.expense_date),
                         categoryClientId = row.category_client_id,
                         categoryServerId = row.category_server_id,
@@ -41,16 +42,17 @@ class ExpenseRepository(
                 }
             }
 
-    /** Creates a local expense, queues a CREATE, and returns its client id. */
+    /** Creates a local expense, queues a CREATE, and returns its client id. [amountText] is in [currency] units. */
     fun add(
         description: String,
         amountText: String,
+        currency: String,
         date: LocalDate,
         categoryClientId: String? = null,
         categoryServerId: Long? = null,
         notes: String? = null,
     ): String {
-        val amountMinor = parsePositiveAmount(amountText)
+        val amountMinor = parsePositiveAmount(amountText, currency)
         val id = Uuid7.generate()
         val now = clock.now().toEpochMilliseconds()
         db.transaction {
@@ -59,6 +61,7 @@ class ExpenseRepository(
                 null,
                 description,
                 amountMinor,
+                currency,
                 date.toString(),
                 categoryServerId,
                 categoryClientId,
@@ -77,12 +80,13 @@ class ExpenseRepository(
         id: String,
         description: String,
         amountText: String,
+        currency: String,
         date: LocalDate,
         categoryClientId: String? = null,
         categoryServerId: Long? = null,
         notes: String? = null,
     ) {
-        val amountMinor = parsePositiveAmount(amountText)
+        val amountMinor = parsePositiveAmount(amountText, currency)
         val now = clock.now().toEpochMilliseconds()
         db.transaction {
             val existing = db.expenseFlowQueries.selectExpenseById(id).executeAsOneOrNull()
@@ -90,6 +94,7 @@ class ExpenseRepository(
             db.expenseFlowQueries.updateExpenseLocal(
                 description = description,
                 amountMinor = amountMinor,
+                currency = currency,
                 expenseDate = date.toString(),
                 categoryServerId = categoryServerId,
                 categoryClientId = categoryClientId,
@@ -113,8 +118,8 @@ class ExpenseRepository(
         }
     }
 
-    private fun parsePositiveAmount(text: String): Long {
-        val minor = Money.parseMinor(text)
+    private fun parsePositiveAmount(text: String, currency: String): Long {
+        val minor = Money.parseMinor(text, Money.minorDigits(currency))
         require(minor > 0) { "Amount must be greater than zero: $text" }
         return minor
     }

@@ -21,7 +21,7 @@ class SyncEngineTest {
     @Test
     fun pushCreateStoresServerIdAndEmptiesOutbox() = runTest {
         val h = SyncTestHarness()
-        val id = h.expenses.add("Lunch", "12.50", date)
+        val id = h.expenses.add("Lunch", "12.50", "INR", date)
 
         h.engine.sync()
 
@@ -34,7 +34,7 @@ class SyncEngineTest {
     @Test
     fun pendingLocalRowIsNotOverwrittenByPull() = runTest {
         val h = SyncTestHarness()
-        val id = h.expenses.add("Lunch", "12.50", date)
+        val id = h.expenses.add("Lunch", "12.50", "INR", date)
         // Push is rejected with a 4xx, so the change stays pending while the pull runs.
         h.api.expenseWriteError = ApiException(400, "rejected")
         val now = h.clock.now()
@@ -42,7 +42,8 @@ class SyncEngineTest {
             id = 1L,
             clientId = id,
             description = "Server copy",
-            amount = "99.00",
+            amountMinor = 9900L,
+            currency = "INR",
             date = date,
             createdAt = now,
             updatedAt = now,
@@ -61,9 +62,9 @@ class SyncEngineTest {
     @Test
     fun pullAppliesNewerServerRowAndTombstone() = runTest {
         val h = SyncTestHarness()
-        val rent = h.api.serverCreateExpense("Rent", "900.00", date)
-        val taxi = h.api.serverCreateExpense("Taxi", "20.00", date)
-        val ghost = h.api.serverCreateExpense("Ghost", "1.00", date)
+        val rent = h.api.serverCreateExpense("Rent", 90000L, date)
+        val taxi = h.api.serverCreateExpense("Taxi", 2000L, date)
+        val ghost = h.api.serverCreateExpense("Ghost", 100L, date)
         h.api.serverDeleteExpense(ghost.id, h.clock.now())
         h.engine.sync()
 
@@ -72,7 +73,7 @@ class SyncEngineTest {
         assertNotNull(h.db.expenseFlowQueries.selectExpenseByServerId(rent.id).executeAsOneOrNull())
 
         h.clock.advanceHours(1)
-        h.api.serverChangeExpense(rent.id, "Rent (edited)", "950.00", h.clock.now())
+        h.api.serverChangeExpense(rent.id, "Rent (edited)", 95000L, h.clock.now())
         h.api.serverDeleteExpense(taxi.id, h.clock.now())
         h.engine.sync()
 
@@ -88,7 +89,7 @@ class SyncEngineTest {
     fun paginationStoresCursorAndResumesAfterFailure() = runTest {
         val h = SyncTestHarness()
         h.api.pageSize = 2
-        repeat(3) { h.api.serverCreateExpense("Item $it", "1.00", date) }
+        repeat(3) { h.api.serverCreateExpense("Item $it", 100L, date) }
         h.api.failPagesWith = IOException("network down")
 
         assertFailsWith<IOException> { h.engine.sync() }
@@ -108,7 +109,7 @@ class SyncEngineTest {
         val h = SyncTestHarness()
         val categoryId = h.categories.add("Food")
         h.api.categoryWriteError = ApiException(400, "rejected")
-        val expenseId = h.expenses.add("Dinner", "30.00", date, categoryClientId = categoryId)
+        val expenseId = h.expenses.add("Dinner", "30.00", "INR", date, categoryClientId = categoryId)
 
         h.engine.sync()
 
@@ -127,10 +128,10 @@ class SyncEngineTest {
     @Test
     fun localEditDuringInFlightPushIsKeptForNextSync() = runTest {
         val h = SyncTestHarness()
-        val id = h.expenses.add("Coffee", "3.00", date)
+        val id = h.expenses.add("Coffee", "3.00", "INR", date)
         h.api.beforeExpenseWrite = {
             h.api.beforeExpenseWrite = null
-            h.expenses.updateExpense(id, "Coffee beans", "18.00", date)
+            h.expenses.updateExpense(id, "Coffee beans", "18.00", "INR", date)
         }
 
         h.engine.sync()
