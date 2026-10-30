@@ -3,17 +3,22 @@ package com.expensetracker.mobile.util
 /**
  * Money helpers. Amounts are Long minor units of a currency, never floats. The number of minor digits per
  * currency (ISO 4217 exponent) must match the backend's `MinorUnits`, which uses `java.util.Currency`.
+ * `MoneyContractTest` checks this table against the JDK for every code it knows, including withdrawn ones.
  */
 object Money {
     private val ZERO_DECIMAL = setOf(
         "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+        // Withdrawn codes that java.util.Currency still resolves; the backend accepts them.
+        "ADP", "BEF", "BYB", "BYR", "ESP", "GRD", "ITL", "LUF", "MGF", "PTE", "ROL", "TPE", "TRL", "UYI",
     )
     private val THREE_DECIMAL = setOf("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND")
+    private val FOUR_DECIMAL = setOf("CLF")
 
-    /** Minor digits for [currency]: 0 for JPY-style, 3 for KWD-style, otherwise 2. */
+    /** Minor digits for [currency]: 0 for JPY-style, 3 for KWD-style, 4 for CLF, otherwise 2. */
     fun minorDigits(currency: String): Int = when (currency) {
         in ZERO_DECIMAL -> 0
         in THREE_DECIMAL -> 3
+        in FOUR_DECIMAL -> 4
         else -> 2
     }
 
