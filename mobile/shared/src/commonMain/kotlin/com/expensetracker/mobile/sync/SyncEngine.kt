@@ -63,6 +63,12 @@ class SyncEngine(
         mutex.withLock { queries.requeueAllFailedOutbox() }
     }
 
+    /** Local changes the server has not acknowledged yet, including rejected ones. */
+    fun unsyncedCount(): Long = queries.countOutbox().executeAsOne()
+
+    /** Runs [block] while no sync is in progress. */
+    suspend fun <T> runExclusive(block: suspend () -> T): T = mutex.withLock { block() }
+
     private suspend fun pushCategories() = pushPending(OutboxEntity.CATEGORY) { op ->
         try {
             pushCategory(op)

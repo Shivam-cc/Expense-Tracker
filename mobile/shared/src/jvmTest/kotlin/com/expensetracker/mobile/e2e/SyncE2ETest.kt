@@ -9,6 +9,8 @@ import com.expensetracker.mobile.api.ExpenseDto
 import com.expensetracker.mobile.api.KtorExpenseFlowApi
 import com.expensetracker.mobile.api.RefreshRequestDto
 import com.expensetracker.mobile.auth.AuthRepository
+import com.expensetracker.mobile.auth.SessionController
+import com.expensetracker.mobile.auth.SignInResult
 import com.expensetracker.mobile.auth.TokenStore
 import com.expensetracker.mobile.data.CategoryRepository
 import com.expensetracker.mobile.data.ExpenseRepository
@@ -42,6 +44,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -238,6 +241,39 @@ class SyncE2ETest {
         }
     }
 
+    @Test
+    fun secondUserOnSameDeviceSeesNoPreviousDataAfterLogout() = runBlocking {
+        assumeBackendRunning(baseUrl)
+        val emailA = uniqueEmail("logout-a")
+        val emailB = uniqueEmail("logout-b")
+        val device = Device(baseUrl)
+        try {
+            device.session.register(NAME, emailA, PASSWORD, fetchDevOtp(baseUrl, emailA))
+            val categoryId = device.categories.add("E2E Private")
+            device.expenses.add("A private lunch", "11.00", "INR", DATE, categoryClientId = categoryId)
+            device.engine.sync()
+            assertEquals(0L, device.outboxCount())
+
+            val result = device.session.register(NAME, emailB, PASSWORD, fetchDevOtp(baseUrl, emailB))
+            assertEquals(emailB, assertIs<SignInResult.SignedIn>(result).session.email)
+
+            assertTrue(
+                device.db.expenseFlowQueries.selectActiveExpenses().executeAsList().isEmpty(),
+                "second user must not see the first user's expenses on this device",
+            )
+            assertTrue(
+                device.db.expenseFlowQueries.selectActiveCategories().executeAsList().none { it.name == "E2E Private" },
+                "second user must not see the first user's categories on this device",
+            )
+
+            device.engine.sync()
+            assertTrue(device.serverExpenses().isEmpty(), "second user's account must hold no expenses from the first")
+            assertTrue(device.serverCategories().none { it.name == "E2E Private" })
+        } finally {
+            device.close()
+        }
+    }
+
     /** One simulated device: its own in-memory database, token store, and HTTP clients. */
     private class Device(baseUrl: String) {
         val clock = TestClock(Clock.System.now())
@@ -256,6 +292,7 @@ class SyncE2ETest {
         val expenses = ExpenseRepository(db, clock)
         val categories = CategoryRepository(db, clock)
         val engine = SyncEngine(api, db, clock)
+        val session = SessionController(auth, engine, db)
 
         fun outboxCount(): Long = db.expenseFlowQueries.countOutbox().executeAsOne()
 

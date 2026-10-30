@@ -343,6 +343,10 @@ retention window would otherwise keep rows the server has forgotten. This is a p
   - Only `account_deleted` wipes local data. A deleted account's refresh rows are kept as hashed, detached records for
     about 37 days so the signal can be returned. After that, the client gets a generic `401` and treats it as an
     ordinary expiry.
+- Sign-out (`SessionController.signOut`) first attempts a sync. If unsynced writes remain, it returns the count and
+  changes nothing, so the UI can warn the user. The caller then confirms and calls again with `discardUnsynced`.
+  Confirming wipes the local database, outbox, and tokens. Signing in as a different user runs the same flow first.
+  Signing in as the same user keeps local data.
 
 
 ## Verification
@@ -351,7 +355,8 @@ retention window would otherwise keep rows the server has forgotten. This is a p
 backend: register (OTP from the local profile), login, offline writes, sync, edit, delete, a second device, and refresh
 rotation with reuse detection. It asserts exact minor-unit amounts across INR, JPY, and KWD. Both tests skip when the
 backend is not reachable at `EXPENSEFLOW_API_URL` (default `http://localhost:8080`). Run steps are in the README
-"Mobile App" section.
+"Mobile App" section. The second-user test covers logout: a second account registered on the same device sees none of
+the first account's data, locally or on the server.
 
 ## Example session
 
