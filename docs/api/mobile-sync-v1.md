@@ -346,9 +346,14 @@ retention window would otherwise keep rows the server has forgotten. This is a p
     can be synced, so the data is discarded.
   - Any other `400`, `401`, `403`, or `404` (expired, revoked, or reused refresh token): clear the tokens and require
     sign-in. Keep the local database and outbox. Unsynced expenses are kept and synced after the next sign-in.
-  - Only `account_deleted` wipes local data. A deleted account's refresh rows are kept as hashed, detached records for
-    about 37 days so the signal can be returned. After that, the client gets a generic `401` and treats it as an
-    ordinary expiry.
+  - Only `account_deleted` wipes local data. When an account is deleted, each of its refresh-token rows is reduced to
+    exactly three fields: `tokenHash` (SHA-256 of the token), `accountDeleted: true`, and `deletedAt` (the deletion
+    time). `userId`, `familyId`, `replacedBy`, `revokedAt`, `createdAt`, and `expiresAt` are removed, so a row no longer
+    identifies the user or the session. A TTL index on `deletedAt` deletes each row 37 days after the deletion: the
+    30-day refresh-token lifetime plus 7 days. Any token presented during that time, whether it was live, rotated, or
+    revoked, gets `account_deleted`. After that, the client gets a generic `401` and treats it as an ordinary expiry.
+    The hourly cleanup of expired tokens never touches these rows. MongoDB runs the TTL monitor about once a minute,
+    so a row may outlive its deadline by that long.
 - Sign-out (`SessionController.signOut`) first attempts a sync. If unsynced writes remain, it returns the count and
   changes nothing, so the UI can warn the user. The caller then confirms and calls again with `discardUnsynced`.
   Confirming wipes the local database, outbox, and tokens. Signing in as a different user runs the same flow first.

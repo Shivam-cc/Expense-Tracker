@@ -21,10 +21,13 @@ public interface RefreshTokenRepository extends DocumentRepository<RefreshToken>
     @Update("{ '$set': { 'revokedAt': ?1 } }")
     long revokeAllForUser(Long userId, LocalDateTime now);
 
+    /** Reduces the user's rows to token hash, accountDeleted and deletedAt. Everything else is removed. */
     @Query("{ 'userId': ?0 }")
-    @Update("{ '$set': { 'accountDeleted': true }, '$unset': { 'userId': '' } }")
-    long detachAccount(Long userId);
+    @Update("{ '$set': { 'accountDeleted': true, 'deletedAt': ?1 }, "
+            + "'$unset': { 'userId': '', 'familyId': '', 'replacedBy': '', 'revokedAt': '', 'createdAt': '', 'expiresAt': '' } }")
+    long detachAccount(Long userId, LocalDateTime deletedAt);
 
-    @Query(value = "{ 'expiresAt': { '$lt': ?0 } }", delete = true)
+    // Detached rows have no expiresAt, and are left to the TTL index on deletedAt.
+    @Query(value = "{ 'accountDeleted': { '$ne': true }, 'expiresAt': { '$lt': ?0 } }", delete = true)
     long deleteExpiredBefore(LocalDateTime cutoff);
 }

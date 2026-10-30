@@ -2,6 +2,7 @@ package com.expensetracker.config;
 
 import com.mongodb.client.MongoCollection;
 import com.expensetracker.model.*;
+import com.expensetracker.service.RefreshTokenService;
 import lombok.RequiredArgsConstructor;
 import org.bson.Document;
 import org.springframework.boot.ApplicationArguments;
@@ -16,6 +17,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +25,7 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class MongoDatabaseInitializer implements ApplicationRunner {
+    public static final String DELETED_REFRESH_TTL_INDEX = "refresh_tokens_deletedAt_ttl";
     private static final String DEFAULT_CURRENCY = new User().getCurrency();
 
     private final MongoTemplate template;
@@ -46,6 +49,10 @@ public class MongoDatabaseInitializer implements ApplicationRunner {
         for (String field : new String[]{"userId", "familyId", "expiresAt"}) {
             template.indexOps(RefreshToken.class).ensureIndex(new Index().on(field, Sort.Direction.ASC));
         }
+        // Rows of deleted accounts carry only tokenHash, accountDeleted and deletedAt, and expire from deletedAt.
+        template.indexOps(RefreshToken.class).ensureIndex(new Index().named(DELETED_REFRESH_TTL_INDEX)
+                .on("deletedAt", Sort.Direction.ASC)
+                .expire(Duration.ofDays(RefreshTokenService.DELETED_ACCOUNT_RETENTION_DAYS)));
         template.indexOps(Category.class).ensureIndex(new Index().on("user", Sort.Direction.ASC));
         template.indexOps(Category.class).ensureIndex(new Index().on("name", Sort.Direction.ASC).unique()
                 .partial(PartialIndexFilter.of(Criteria.where("user").is(null))));
@@ -56,6 +63,19 @@ public class MongoDatabaseInitializer implements ApplicationRunner {
         seedCategories();
         backfillUpdatedAt();
         backfillCurrencies();
+        backfillDeletedRefreshRows();
+    }
+
+    /**
+     * Rows detached by an earlier version kept more fields and have no deletedAt, so the TTL index would never
+     * remove them. This stamps them with the current time and strips them down to the hash and flags.
+     */
+    private void backfillDeletedRefreshRows() {
+        List<Document> pipeline = List.of(
+                new Document("$set", new Document("deletedAt", "$$NOW")),
+                new Document("$unset", List.of("userId", "familyId", "replacedBy", "revokedAt", "createdAt", "expiresAt")));
+        template.getCollection(template.getCollectionName(RefreshToken.class))
+                .updateMany(new Document("accountDeleted", true).append("deletedAt", null), pipeline);
     }
 
     /** Sync pulls scan by owner and updatedAt; clientId is unique per owner only when present, so create retries are idempotent. */

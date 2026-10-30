@@ -33,6 +33,12 @@ public class RefreshToken implements IdentifiedDocument {
 
     private Long replacedBy;
 
-    /** Set when the owning account is deleted. The row is kept (hash and timestamps only) so refresh can report the deletion. */
+    /**
+     * Set when the owning account is deleted. The row is then reduced to {@code tokenHash}, this flag and
+     * {@link #deletedAt}, so refresh can report the deletion. A TTL index on {@code deletedAt} removes it.
+     */
     private boolean accountDeleted;
+
+    /** When the account was deleted. Only present on rows with {@link #accountDeleted}. */
+    private LocalDateTime deletedAt;
 }

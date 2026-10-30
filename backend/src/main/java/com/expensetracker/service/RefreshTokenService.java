@@ -26,7 +26,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RefreshTokenService {
 
-    static final int REFRESH_TTL_DAYS = 30;
+    public static final int REFRESH_TTL_DAYS = 30;
+    static final int EXPIRED_EVICTION_GRACE_DAYS = 7;
+    /** How long a deleted account's token hashes stay, so refresh can still answer account_deleted. */
+    public static final int DELETED_ACCOUNT_RETENTION_DAYS = REFRESH_TTL_DAYS + 7;
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
@@ -80,19 +83,19 @@ public class RefreshTokenService {
     }
 
     /**
-     * Ends every session of a deleted account. Tokens are revoked and their owner link is removed, leaving only
-     * the token hash and timestamps, so a later refresh can report {@code account_deleted} instead of a generic 401.
+     * Ends every session of a deleted account. Each row is reduced to its token hash, {@code accountDeleted} and
+     * {@code deletedAt}, so a later refresh can report {@code account_deleted} instead of a generic 401. A TTL
+     * index on {@code deletedAt} removes the rows after {@link #DELETED_ACCOUNT_RETENTION_DAYS} days.
      */
     @Transactional
     public void retireAccountSessions(Long userId) {
-        refreshTokenRepository.revokeAllForUser(userId, LocalDateTime.now());
-        refreshTokenRepository.detachAccount(userId);
+        refreshTokenRepository.detachAccount(userId, LocalDateTime.now());
     }
 
     @Scheduled(fixedDelay = 3_600_000L)
     @Transactional
     public void evictExpired() {
-        refreshTokenRepository.deleteExpiredBefore(LocalDateTime.now().minusDays(7));
+        refreshTokenRepository.deleteExpiredBefore(LocalDateTime.now().minusDays(EXPIRED_EVICTION_GRACE_DAYS));
     }
 
     private record Issued(Long tokenId, AuthResponse response) {}
