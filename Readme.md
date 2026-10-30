@@ -158,10 +158,10 @@ Android builds need the Android SDK (`ANDROID_HOME` or `mobile/local.properties`
 **End-to-end test against the local backend:** `SyncE2ETest` (in `mobile/shared/src/jvmTest/kotlin/com/expensetracker/mobile/e2e/`) registers a user, reads the OTP from the local profile, signs in, makes offline edits, syncs across two devices, checks exact amounts, and verifies token rotation. It is skipped when the backend is not reachable.
 ```powershell
 docker compose up -d --wait mongodb                                  # repository root
-cd backend; .\mvnw.cmd -q spring-boot:run "-Dspring-boot.run.profiles=local"   # leave running
+cd backend; .\mvnw.cmd -q spring-boot:run "-Dspring-boot.run.profiles=local,e2e"   # leave running
 cd ..\mobile; .\gradlew.bat :shared:cleanJvmTest :shared:jvmTest --no-build-cache --tests "com.expensetracker.mobile.e2e.SyncE2ETest"
 ```
-The base URL defaults to `http://localhost:8080` and can be changed with `EXPENSEFLOW_API_URL`. Use `--no-build-cache` (and `cleanJvmTest`) to force a live run; otherwise Gradle may report cached results without contacting the backend.
+The `e2e` profile (`backend/src/main/resources/application-e2e.properties`) raises only the auth rate limit (`app.rate-limit.auth-max=1000`), because the suite makes more auth calls than the default 15 per minute allows. Run the backend with `local` alone for normal development, which keeps the default limit. The base URL defaults to `http://localhost:8080` and can be changed with `EXPENSEFLOW_API_URL`. Use `--no-build-cache` (and `cleanJvmTest`) to force a live run; otherwise Gradle may report cached results without contacting the backend.
 
 **Planned (not yet built):**
 - Native UIs: SwiftUI with Swift Charts, WidgetKit, App Intents, and Vision OCR on iOS; Jetpack Compose with Material 3, Vico, Glance, and ML Kit on Android.
