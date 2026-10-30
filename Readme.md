@@ -142,45 +142,33 @@ Environment variables are documented in [backend/.env.example](backend/.env.exam
 - **Backend (Railway):** `railway.toml` builds `backend/Dockerfile` and checks `/actuator/health`. Set `SPRING_PROFILES_ACTIVE=prod`, `MONGODB_URI` (authenticated Atlas or replica-set URI including the database name), `JWT_SECRET` (base64, at least 256 bits; generate with `openssl rand -base64 48`), and `CORS_ORIGINS` (your exact frontend origin). Optional: `SENDGRID_API_KEY`, `SENDGRID_FROM`, `SENTRY_DSN`. Configure database access controls, durable storage, and backups; see [backup and restore](docs/operations/backup-restore.md).
 - **Frontend (Vercel):** `frontend/vercel.json` handles SPA routing. Set `VITE_API_URL` to the backend's public URL. Optional: `VITE_SENTRY_DSN`.
 
-## Mobile App (Planned)
+## Mobile App
 
-Native iOS and Android apps are planned. They are not implemented yet.
+Status: the Kotlin Multiplatform shared core is implemented under [mobile/shared](mobile/shared/). The SwiftUI and Jetpack Compose apps are **not built yet**.
 
-**Approach:** native UIs (SwiftUI and Jetpack Compose) on a shared Kotlin Multiplatform (KMP) core. The core holds models, the API client, the local database, the sync engine, and auth/token logic. The existing Spring Boot API and MongoDB backend stay as they are, with the mobile-specific additions below.
+**Shared core (`mobile/shared`):** models, the Ktor API client, the SQLDelight local database with an outbox, the sync engine, auth/token handling (Android Keystore AES-GCM via DataStore), and money handling in integer minor units. The wire contract is documented in [Mobile sync API v1](docs/api/mobile-sync-v1.md).
 
-| Layer | iOS | Android | Shared (KMP) |
-|---|---|---|---|
-| UI | SwiftUI, Swift Charts | Jetpack Compose, Material 3, Vico | - |
-| Networking | - | - | Ktor Client, kotlinx.serialization, OpenAPI-generated models |
-| Local DB | - | - | SQLDelight (outbox pattern for offline writes) |
-| Secure storage | Keychain | Android Keystore | expect/actual wrappers |
-| Platform features | WidgetKit, App Intents, VisionKit + Vision OCR, Face ID / Touch ID, APNs | Jetpack Glance, App Actions, ML Kit scanner + text recognition, BiometricPrompt, FCM | - |
-| Background sync | BGTaskScheduler | WorkManager | Sync engine |
-| Testing | XCTest / Swift Testing, XCUITest | JUnit, Compose UI Test | kotlin.test |
-
-**Offline-first:** the local database is the source of truth for the UI. Writes go to a local outbox, and a sync engine pushes and pulls in the background. Records use client-generated UUIDv7 IDs. Conflicts use last-write-wins on server timestamps. Realm / Atlas Device Sync is not used, because MongoDB has deprecated it.
-
-**Backend changes needed before the apps:**
-1. Versioned API (`/api/v1/...`) so older app versions keep working.
-2. Sync support: `GET /expenses?updatedSince=<ts>`, soft deletes (tombstones), `updatedAt` on every document, and an index on `(userId, updatedAt)`.
-3. Idempotency keys on create and update requests, so network retries do not duplicate expenses.
-4. Refresh tokens returned in the response body for native secure storage, with reuse detection, per-device sessions, and "sign out of all devices".
-5. Device registration for push notifications (APNs and FCM tokens per device).
-6. A minimum-supported-version endpoint so a security fix can force an upgrade.
-7. Receipt images, if scanning is added, stored in object storage (S3/R2) through pre-signed uploads rather than in MongoDB.
-8. Optional App Attest (iOS) and Play Integrity (Android) checks on auth endpoints.
-9. Account deletion endpoint that removes the user and all their expenses. Required by both app stores.
-
-**Suggested layout:**
+**Run the shared-core tests (from `mobile/`):**
+```powershell
+.\gradlew.bat :shared:jvmTest :shared:compileDebugKotlinAndroid   # Windows
+./gradlew :shared:jvmTest :shared:compileDebugKotlinAndroid       # macOS/Linux
 ```
-mobile/
-  shared/        KMP module: models, sync, database, networking
-  androidApp/    Jetpack Compose app
-  iosApp/        SwiftUI app consuming the shared framework
-api/openapi.yaml exported spec used to generate web and mobile clients
-```
+Android builds need the Android SDK (`ANDROID_HOME` or `mobile/local.properties`). iOS targets compile on macOS only; the CI job `mobile-ios` covers them.
 
-**Build order:** backend changes → KMP core (heavily unit-tested) → auth, expense list/add, categories, and dashboard in both apps → platform extras (widgets, biometrics, receipt OCR, shortcuts, reminders) → TestFlight and Play closed testing.
+**End-to-end test against the local backend:** `SyncE2ETest` (in `mobile/shared/src/jvmTest/kotlin/com/expensetracker/mobile/e2e/`) registers a user, reads the OTP from the local profile, signs in, makes offline edits, syncs across two devices, checks exact amounts, and verifies token rotation. It is skipped when the backend is not reachable.
+```powershell
+docker compose up -d --wait mongodb                                  # repository root
+cd backend; .\mvnw.cmd -q spring-boot:run "-Dspring-boot.run.profiles=local"   # leave running
+cd ..\mobile; .\gradlew.bat :shared:cleanJvmTest :shared:jvmTest --no-build-cache --tests "com.expensetracker.mobile.e2e.SyncE2ETest"
+```
+The base URL defaults to `http://localhost:8080` and can be changed with `EXPENSEFLOW_API_URL`. Use `--no-build-cache` (and `cleanJvmTest`) to force a live run; otherwise Gradle may report cached results without contacting the backend.
+
+**Planned (not yet built):**
+- Native UIs: SwiftUI with Swift Charts, WidgetKit, App Intents, and Vision OCR on iOS; Jetpack Compose with Material 3, Vico, Glance, and ML Kit on Android.
+- Platform features: biometrics, push (APNs and FCM), background sync (BGTaskScheduler and WorkManager), shortcuts, and receipt scanning.
+- Shared-core remaining work: a token-migration path for existing sessions (the old tokens are discarded, so users sign in again after upgrading), and the tombstone purge job (proposal only, see the sync doc).
+
+**Backend for mobile:** the versioned sync API under `/api/v1` is implemented, with soft deletes (tombstones), idempotent creates by `clientId`, and integer minor-unit amounts. Refresh tokens rotate with reuse detection. Account deletion is a hard delete at `DELETE /api/users/me`. Not yet built: a minimum-supported-version endpoint and device registration for push. See [Mobile sync API v1](docs/api/mobile-sync-v1.md).
 
 ## License
 MIT
