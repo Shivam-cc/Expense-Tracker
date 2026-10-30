@@ -65,6 +65,26 @@ class FailedOutboxActionsTest {
     }
 
     @Test
+    fun discardingACategoryRenamePreservesExpenseReferencesToTheServerCategory() = runTest {
+        val h = SyncTestHarness()
+        val category = h.categories.add("Pets")
+        val expense = h.expenses.add("Vet", "5.00", "INR", date, categoryClientId = category)
+        h.engine.sync()
+        val serverId = h.db.expenseFlowQueries.selectCategoryById(category).executeAsOne().server_id
+        h.categories.rename(category, "Animals")
+        h.api.categoryWriteError = ApiException(400, "rejected")
+        h.engine.sync()
+
+        h.engine.discardFailedItem(OutboxEntity.CATEGORY, category)
+
+        assertEquals(serverId, h.db.expenseFlowQueries.selectExpenseById(expense).executeAsOne().category_server_id)
+        h.api.categoryWriteError = null
+        h.engine.sync()
+        assertEquals("Pets", h.db.expenseFlowQueries.selectCategoryById(category).executeAsOne().name)
+        assertEquals(category, h.db.expenseFlowQueries.selectExpenseById(expense).executeAsOne().category_client_id)
+    }
+
+    @Test
     fun onlyRejectedItemsCanBeDiscarded() = runTest {
         val h = SyncTestHarness()
         val id = h.expenses.add("Lunch", "12.50", "INR", date)

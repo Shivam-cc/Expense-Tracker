@@ -111,7 +111,11 @@ class SyncEngine(
                     }
                     OutboxEntity.CATEGORY -> {
                         val serverId = queries.selectCategoryById(clientId).executeAsOneOrNull()?.server_id
-                        queries.clearExpenseCategory(clientId = clientId, serverId = serverId)
+                        if (serverId == null) {
+                            queries.clearExpenseCategory(clientId = clientId, serverId = null)
+                        } else {
+                            queries.detachExpenseCategoryForRestore(serverId = serverId, clientId = clientId)
+                        }
                         queries.deleteCategoryById(clientId)
                         "category"
                     }

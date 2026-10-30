@@ -64,13 +64,10 @@ class AuthRepository(
     suspend fun logout() {
         val session = try {
             store.load()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
+        } finally {
+            // Runs even if reading the store failed or the caller was cancelled.
+            withContext(NonCancellable) { store.clear() }
         }
-        // Runs even if the caller was cancelled.
-        withContext(NonCancellable) { store.clear() }
         if (session == null) return
         try {
             api.logout(RefreshRequestDto(session.refreshToken))

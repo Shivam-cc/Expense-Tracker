@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "ExpenseFlowMobile"
 
 include(":shared")
+include(":androidApp")

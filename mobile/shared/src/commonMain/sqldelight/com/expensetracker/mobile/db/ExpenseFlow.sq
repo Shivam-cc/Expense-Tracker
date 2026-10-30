@@ -96,6 +96,10 @@ clearExpenseCategory:
 UPDATE expense SET category_client_id = NULL, category_server_id = NULL
 WHERE category_client_id = :clientId OR category_server_id = :serverId;
 
+detachExpenseCategoryForRestore:
+UPDATE expense SET category_client_id = NULL, category_server_id = :serverId
+WHERE category_client_id = :clientId;
+
 selectActiveCategories:
 SELECT * FROM category WHERE deleted_at IS NULL ORDER BY name;
 

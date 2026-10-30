@@ -144,7 +144,7 @@ Environment variables are documented in [backend/.env.example](backend/.env.exam
 
 ## Mobile App
 
-Status: the Kotlin Multiplatform shared core is implemented under [mobile/shared](mobile/shared/). The SwiftUI and Jetpack Compose apps are **not built yet**.
+Status: native Android (Jetpack Compose + Material 3) is implemented under [mobile/androidApp](mobile/androidApp/) on the Kotlin Multiplatform core in [mobile/shared](mobile/shared/). SwiftUI for iOS is still planned. No web wrapper is used.
 
 **Shared core (`mobile/shared`):** models, the Ktor API client, the SQLDelight local database with an outbox, the sync engine, auth/token handling (Android Keystore AES-GCM via DataStore), and money handling in integer minor units. The wire contract is documented in [Mobile sync API v1](docs/api/mobile-sync-v1.md).
 
@@ -155,6 +155,23 @@ Status: the Kotlin Multiplatform shared core is implemented under [mobile/shared
 ```
 Android builds need the Android SDK (`ANDROID_HOME` or `mobile/local.properties`). iOS targets compile on macOS only; the CI job `mobile-ios` covers them.
 
+**Android app (from `mobile/`):**
+```powershell
+.\gradlew.bat :androidApp:testDebugUnitTest :androidApp:assembleDebug
+.\gradlew.bat :androidApp:installDebug
+```
+Open ExpenseFlow in an emulator. Debug connects to `http://10.0.2.2:8080`; its network security config allows cleartext only to that exact host. Release rejects cleartext and uses a configurable HTTPS endpoint:
+```powershell
+.\gradlew.bat :androidApp:assembleRelease "-Pexpenseflow.apiUrl=https://your-backend.example"
+```
+The release default is `https://localhost`, not a deployed service; set your endpoint before distributing. Release signing is not configured.
+
+The app supports email OTP signup, sign-in, confirmed sign-out, offline expense CRUD and category selection/create/rename. Duplicate or reserved category names offer the existing category for selection (sync first if the built-in has not been downloaded). A selected category becomes the default for the next new expense. Built-in categories are read-only.
+
+Sync status shows the last completed sync, pending count and manual sync. WorkManager requests network-connected sync approximately every 15 minutes (Android may defer it); failed changes have individual retry/discard actions with a reason. Discard removes the local change and restores an existing server copy on the next sync. Expired sessions preserve offline data; the explicit `account_deleted` refresh signal wipes it. Sign-out confirmations carry the displayed pending count and re-prompt when it increases.
+
+The `mobile-android` CI job builds, runs Android/shared JVM unit tests and assembles the debug APK. It does not run the live emulator walkthrough.
+
 **End-to-end test against the local backend:** `SyncE2ETest` (in `mobile/shared/src/jvmTest/kotlin/com/expensetracker/mobile/e2e/`) registers a user, reads the OTP from the local profile, signs in, makes offline edits, syncs across two devices, checks exact amounts, and verifies token rotation. It is skipped when the backend is not reachable.
 ```powershell
 docker compose up -d --wait mongodb                                  # repository root
@@ -163,9 +180,15 @@ cd ..\mobile; .\gradlew.bat :shared:cleanJvmTest :shared:jvmTest --no-build-cach
 ```
 The `e2e` profile (`backend/src/main/resources/application-e2e.properties`) raises only the auth rate limit (`app.rate-limit.auth-max=1000`), because the suite makes more auth calls than the default 15 per minute allows. Run the backend with `local` alone for normal development, which keeps the default limit. The base URL defaults to `http://localhost:8080` and can be changed with `EXPENSEFLOW_API_URL`. Use `--no-build-cache` (and `cleanJvmTest`) to force a live run; otherwise Gradle may report cached results without contacting the backend.
 
+**Live Android emulator walkthrough:** start the backend with `local,e2e` as above, boot one API 35 emulator, and run from `mobile/`:
+```powershell
+.\gradlew.bat :androidApp:connectedDebugAndroidTest
+```
+Use a dedicated emulator with a signed-out app: the test changes its Wi-Fi/mobile-data state and restores connectivity in `finally`. It obtains the local-only `devOtp` from the backend (no email delivery is needed), enters it in the real signup UI, adds two expenses offline, reconnects, syncs and checks exact server amounts. It also edits an expense, runs the actual sync worker through WorkManager, creates/renames a category, selects a reserved-name duplicate, verifies a delete tombstone, exercises failed-item retry/discard, signs out and signs back in. Normal signup uses the OTP delivered by email; local development can obtain `devOtp` from `/api/auth/send-otp`. Never enable OTP dev mode or the `e2e` profile in production.
+
 **Planned (not yet built):**
-- Native UIs: SwiftUI with Swift Charts, WidgetKit, App Intents, and Vision OCR on iOS; Jetpack Compose with Material 3, Vico, Glance, and ML Kit on Android.
-- Platform features: biometrics, push (APNs and FCM), background sync (BGTaskScheduler and WorkManager), shortcuts, and receipt scanning.
+- iOS SwiftUI, Swift Charts, WidgetKit, App Intents, Vision OCR and BGTaskScheduler.
+- Android charts, Glance widgets and ML Kit; biometrics, push (APNs/FCM), shortcuts and receipt scanning.
 - Shared-core remaining work: a token-migration path for existing sessions (the old tokens are discarded, so users sign in again after upgrading), and the tombstone purge job (proposal only, see the sync doc).
 
 **Backend for mobile:** the versioned sync API under `/api/v1` is implemented, with soft deletes (tombstones), idempotent creates by `clientId`, and integer minor-unit amounts. Refresh tokens rotate with reuse detection. Account deletion is a hard delete at `DELETE /api/users/me`. Not yet built: a minimum-supported-version endpoint and device registration for push. See [Mobile sync API v1](docs/api/mobile-sync-v1.md).
