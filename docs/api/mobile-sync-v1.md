@@ -325,8 +325,13 @@ retention window would otherwise keep rows the server has forgotten. This is a p
 - Creating or editing an expense with a deleted category returns 404. Clients should clear the selection and retry.
 - Creating a category whose name matches a built-in returns `409` with `existingCategory`. The client adopts that
   category's `id`: it points local expenses and outbox rows at the built-in, drops the local duplicate, and does not
-  retry the create. A `409` on an update is not adopted; the edit stays in the outbox and counts as a failed attempt.
+  retry the create. A `409` on an update is not adopted; the edit is marked failed in the outbox and exposed to the UI.
   Clients also reject built-in names locally, so this path covers only a client that has drifted from the defaults.
+- Outbox failure handling, per write:
+  - Network errors, `408`, `429`, and `5xx`: retry later with exponential backoff (30 s, doubling, capped at 1 h).
+  - `401`, or `account_deleted`: abort the sync run and leave the outbox untouched. The client requires sign-in first.
+  - Other `4xx` (for example `400`, `403`, `404`, or an unadopted `409` on update): mark the row failed and expose it
+    to the UI. A failed row does not block other rows. A local edit to the same record, or an explicit retry, requeues it.
 - `updatedAt` is always set by the server. Clients should not send it.
 - `createdAt` is nullable.
 - An expense's `currency` can differ from the user's profile currency. Show it next to the amount.

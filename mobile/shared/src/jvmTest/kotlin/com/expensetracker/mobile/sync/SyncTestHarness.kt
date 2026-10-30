@@ -10,8 +10,10 @@ import kotlinx.datetime.Instant
 class TestClock(var current: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000)) : Clock {
     override fun now(): Instant = current
 
-    fun advanceHours(hours: Long) {
-        current = Instant.fromEpochMilliseconds(current.toEpochMilliseconds() + hours * 3_600_000L)
+    fun advanceHours(hours: Long) = advanceMillis(hours * 3_600_000L)
+
+    fun advanceMillis(millis: Long) {
+        current = Instant.fromEpochMilliseconds(current.toEpochMilliseconds() + millis)
     }
 }
 

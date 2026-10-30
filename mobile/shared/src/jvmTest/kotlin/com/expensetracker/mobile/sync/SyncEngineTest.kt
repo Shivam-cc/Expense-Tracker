@@ -2,6 +2,7 @@ package com.expensetracker.mobile.sync
 
 import com.expensetracker.mobile.api.ApiException
 import com.expensetracker.mobile.api.CategoryDto
+import com.expensetracker.mobile.api.ERROR_ACCOUNT_DELETED
 import com.expensetracker.mobile.api.ExpenseDto
 import com.expensetracker.mobile.util.Uuid7
 import kotlinx.coroutines.test.runTest
@@ -55,7 +56,7 @@ class SyncEngineTest {
     }
 
     @Test
-    fun conflictOnUpdateIsNotAdoptedAndStaysInOutboxWithAttemptCounted() = runTest {
+    fun conflictOnUpdateIsNotAdoptedAndIsMarkedFailed() = runTest {
         val h = SyncTestHarness()
         val id = h.categories.add("Sport")
         h.engine.sync()
@@ -71,7 +72,12 @@ class SyncEngineTest {
         assertEquals("Gym", h.db.expenseFlowQueries.selectCategoryById(id).executeAsOne().name)
         val op = h.db.expenseFlowQueries.selectOutboxForClient(OutboxEntity.CATEGORY.name, id).executeAsOne()
         assertEquals(OutboxOperation.UPDATE.name, op.operation)
+        assertEquals(1L, op.failed)
         assertEquals(1L, op.attempts)
+        assertEquals(
+            listOf(FailedOutboxItem(OutboxEntity.CATEGORY, id, OutboxOperation.UPDATE, op.last_error)),
+            h.engine.failedOutboxItems(),
+        )
     }
 
     @Test
@@ -164,7 +170,7 @@ class SyncEngineTest {
     fun expenseWithUnsyncedCategoryStaysInOutbox() = runTest {
         val h = SyncTestHarness()
         val categoryId = h.categories.add("Takeout")
-        h.api.categoryWriteError = ApiException(400, "rejected")
+        h.api.categoryWriteError = ApiException(503, "unavailable")
         val expenseId = h.expenses.add("Dinner", "30.00", "INR", date, categoryClientId = categoryId)
 
         h.engine.sync()
@@ -174,11 +180,102 @@ class SyncEngineTest {
         assertTrue(h.api.expenses.isEmpty())
 
         h.api.categoryWriteError = null
+        h.clock.advanceHours(1)
         h.engine.sync()
 
         assertEquals(0L, h.outboxCount())
         val serverCategory = h.api.categories.values.single()
         assertEquals(serverCategory.id, h.api.expenses.values.single().categoryId)
+    }
+
+    @Test
+    fun transientServerErrorBacksOffBeforeRetrying() = runTest {
+        val h = SyncTestHarness()
+        val id = h.expenses.add("Lunch", "12.50", "INR", date)
+        h.api.expenseWriteError = ApiException(503, "unavailable")
+        val failedAt = h.clock.now().toEpochMilliseconds()
+
+        h.engine.sync()
+
+        val op = h.db.expenseFlowQueries.selectOutboxForClient("EXPENSE", id).executeAsOne()
+        assertEquals(0L, op.failed)
+        assertEquals(1L, op.attempts)
+        assertEquals("unavailable", op.last_error)
+        assertEquals(failedAt + 30_000L, op.next_attempt_at)
+        assertTrue(h.engine.failedOutboxItems().isEmpty())
+
+        h.api.expenseWriteError = null
+        h.clock.advanceMillis(29_000L)
+        h.engine.sync()
+        assertTrue(h.api.expenses.isEmpty(), "row must not be retried before its backoff expires")
+
+        h.clock.advanceMillis(1_000L)
+        h.engine.sync()
+        assertEquals(0L, h.outboxCount())
+        assertEquals(1, h.api.expenses.size)
+    }
+
+    @Test
+    fun rejectedItemIsMarkedFailedWithoutBlockingOthers() = runTest {
+        val h = SyncTestHarness()
+        val bad = h.expenses.add("Bad", "1.00", "INR", date)
+        val good = h.expenses.add("Good", "2.00", "INR", date)
+        h.api.expenseWriteFault = { request ->
+            if (request.description == "Bad") ApiException(400, "amount rejected") else null
+        }
+
+        h.engine.sync()
+
+        assertEquals(
+            listOf(FailedOutboxItem(OutboxEntity.EXPENSE, bad, OutboxOperation.CREATE, "amount rejected")),
+            h.engine.failedOutboxItems(),
+        )
+        assertNotNull(h.db.expenseFlowQueries.selectExpenseById(good).executeAsOne().server_id)
+        assertNull(h.db.expenseFlowQueries.selectExpenseById(bad).executeAsOne().server_id)
+        assertEquals(1L, h.outboxCount())
+
+        h.api.expenseWriteFault = null
+        h.engine.sync()
+        assertEquals(1L, h.outboxCount(), "a failed row is not retried until the user asks")
+
+        h.engine.retryFailed()
+        h.engine.sync()
+        assertEquals(0L, h.outboxCount())
+        assertTrue(h.engine.failedOutboxItems().isEmpty())
+    }
+
+    @Test
+    fun localEditRequeuesAFailedRow() = runTest {
+        val h = SyncTestHarness()
+        val id = h.expenses.add("Bad", "1.00", "INR", date)
+        h.api.expenseWriteFault = { ApiException(400, "amount rejected") }
+        h.engine.sync()
+        assertEquals(1, h.engine.failedOutboxItems().size)
+
+        h.api.expenseWriteFault = null
+        h.expenses.updateExpense(id, "Fixed", "5.00", "INR", date)
+
+        assertTrue(h.engine.failedOutboxItems().isEmpty())
+        h.engine.sync()
+        assertEquals(0L, h.outboxCount())
+        assertEquals("Fixed", h.api.expenses.getValue(1L).description)
+    }
+
+    @Test
+    fun unauthorizedOrAccountDeletedAbortsRunAndLeavesOutboxUntouched() = runTest {
+        val h = SyncTestHarness()
+        val id = h.expenses.add("Lunch", "12.50", "INR", date)
+        h.api.expenseWriteError = ApiException(401, "expired")
+        assertFailsWith<ApiException> { h.engine.sync() }
+        val op = h.db.expenseFlowQueries.selectOutboxForClient("EXPENSE", id).executeAsOne()
+        assertEquals(0L, op.attempts)
+        assertEquals(0L, op.failed)
+        assertEquals(0L, op.next_attempt_at)
+
+        h.api.expenseWriteError = ApiException(401, "gone", error = ERROR_ACCOUNT_DELETED)
+        assertFailsWith<ApiException> { h.engine.sync() }
+        assertEquals(0L, h.db.expenseFlowQueries.selectOutboxForClient("EXPENSE", id).executeAsOne().failed)
+        assertTrue(h.engine.failedOutboxItems().isEmpty())
     }
 
     @Test

@@ -33,7 +33,10 @@ CREATE TABLE outbox (
     entity TEXT NOT NULL,
     client_id TEXT NOT NULL,
     operation TEXT NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
 );
 
 CREATE INDEX outbox_entity_client ON outbox(entity, client_id);
@@ -114,8 +117,11 @@ UPDATE expense SET category_client_id = :toClientId, category_server_id = :toSer
 selectOutboxForClient:
 SELECT * FROM outbox WHERE entity = :entity AND client_id = :clientId;
 
-selectOutboxByEntity:
-SELECT * FROM outbox WHERE entity = :entity ORDER BY seq;
+selectDueOutboxByEntity:
+SELECT * FROM outbox WHERE entity = :entity AND failed = 0 AND next_attempt_at <= :nowMillis ORDER BY seq;
+
+selectFailedOutbox:
+SELECT * FROM outbox WHERE failed = 1 ORDER BY seq;
 
 countOutbox:
 SELECT COUNT(*) AS total FROM outbox;
@@ -126,8 +132,17 @@ INSERT INTO outbox (entity, client_id, operation) VALUES (?, ?, ?);
 updateOutboxOperation:
 UPDATE outbox SET operation = :operation WHERE seq = :seq;
 
-incrementOutboxAttempts:
-UPDATE outbox SET attempts = attempts + 1 WHERE seq = :seq;
+scheduleOutboxRetry:
+UPDATE outbox SET attempts = attempts + 1, next_attempt_at = :nextAttemptAt, last_error = :lastError WHERE seq = :seq;
+
+markOutboxFailed:
+UPDATE outbox SET attempts = attempts + 1, failed = 1, last_error = :lastError WHERE seq = :seq;
+
+requeueOutbox:
+UPDATE outbox SET attempts = 0, next_attempt_at = 0, failed = 0, last_error = NULL WHERE seq = :seq;
+
+requeueAllFailedOutbox:
+UPDATE outbox SET attempts = 0, next_attempt_at = 0, failed = 0, last_error = NULL WHERE failed = 1;
 
 deleteOutbox:
 DELETE FROM outbox WHERE seq = :seq;

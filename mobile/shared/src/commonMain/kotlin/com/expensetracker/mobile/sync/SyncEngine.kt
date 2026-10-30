@@ -1,6 +1,7 @@
 package com.expensetracker.mobile.sync
 
 import com.expensetracker.mobile.api.ApiException
+import com.expensetracker.mobile.api.ERROR_ACCOUNT_DELETED
 import com.expensetracker.mobile.api.CategoryDto
 import com.expensetracker.mobile.api.CategoryWriteDto
 import com.expensetracker.mobile.api.ChangePage
@@ -23,8 +24,10 @@ import kotlinx.datetime.LocalDate
  * Offline-first sync. Pushes the outbox (categories first, then expenses, in seq order), then pulls
  * changes (expenses, then categories). Local rows with a pending outbox entry are never overwritten by a pull.
  *
- * Transport failures (and 5xx or 401/408/429) are rethrown; the outbox and cursors stay consistent,
- * so the next [sync] resumes where this one stopped.
+ * Outbox failures are classified per item (see [FailureKind]): 5xx, 408 and 429 are retried with backoff;
+ * other 4xx are marked failed and exposed through [failedOutboxItems]. One item never blocks another.
+ * A 401 or an account-deleted response aborts the run, and so does a transport failure (no HTTP response);
+ * nothing is penalised in either case, so the next [sync] resumes where this one stopped.
  */
 class SyncEngine(
     private val api: ExpenseFlowApi,
@@ -44,19 +47,29 @@ class SyncEngine(
         }
     }
 
-    private suspend fun pushCategories() {
-        for (op in queries.selectOutboxByEntity(OutboxEntity.CATEGORY.name).executeAsList()) {
-            try {
-                pushCategory(op)
-            } catch (e: ApiException) {
-                val existing = e.existingCategory
-                if (e.status == 409 && existing != null && op.operation == OutboxOperation.CREATE.name) {
-                    adoptDefaultCategory(op.client_id, existing)
-                    continue
-                }
-                if (!e.isClientRejection()) throw e
-                queries.incrementOutboxAttempts(op.seq)
-            }
+    /** Outbox items the server rejected. They stay queued until [retryFailed] or a new local edit. */
+    fun failedOutboxItems(): List<FailedOutboxItem> =
+        queries.selectFailedOutbox().executeAsList().map { row ->
+            FailedOutboxItem(
+                entity = OutboxEntity.valueOf(row.entity),
+                clientId = row.client_id,
+                operation = OutboxOperation.valueOf(row.operation),
+                error = row.last_error,
+            )
+        }
+
+    /** Requeues every rejected item so the next [sync] tries it again. */
+    suspend fun retryFailed() {
+        mutex.withLock { queries.requeueAllFailedOutbox() }
+    }
+
+    private suspend fun pushCategories() = pushPending(OutboxEntity.CATEGORY) { op ->
+        try {
+            pushCategory(op)
+        } catch (e: ApiException) {
+            val existing = e.existingCategory
+            if (e.status != 409 || existing == null || op.operation != OutboxOperation.CREATE.name) throw e
+            adoptDefaultCategory(op.client_id, existing)
         }
     }
 
@@ -79,13 +92,27 @@ class SyncEngine(
         }
     }
 
-    private suspend fun pushExpenses() {
-        for (op in queries.selectOutboxByEntity(OutboxEntity.EXPENSE.name).executeAsList()) {
+    private suspend fun pushExpenses() = pushPending(OutboxEntity.EXPENSE) { op -> pushExpense(op) }
+
+    /**
+     * Pushes the due rows of one entity. A failing row is recorded and skipped, so it never blocks the rows
+     * after it. Rows are read once up front, so a row retried in this run is not hit twice.
+     */
+    private suspend fun pushPending(entity: OutboxEntity, push: suspend (Outbox) -> Unit) {
+        val now = clock.now().toEpochMilliseconds()
+        for (op in queries.selectDueOutboxByEntity(entity.name, now).executeAsList()) {
             try {
-                pushExpense(op)
+                push(op)
             } catch (e: ApiException) {
-                if (!e.isClientRejection()) throw e
-                queries.incrementOutboxAttempts(op.seq)
+                when (e.failureKind()) {
+                    FailureKind.ABORT -> throw e
+                    FailureKind.RETRY -> queries.scheduleOutboxRetry(
+                        nextAttemptAt = now + retryDelayMillis(op.attempts),
+                        lastError = e.message,
+                        seq = op.seq,
+                    )
+                    FailureKind.REJECT -> queries.markOutboxFailed(lastError = e.message, seq = op.seq)
+                }
             }
         }
     }
@@ -327,8 +354,19 @@ class SyncEngine(
         queries.deleteSyncState(key)
     }
 
-    private fun ApiException.isClientRejection(): Boolean =
-        status in 400..499 && status != 401 && status != 408 && status != 429
+    private enum class FailureKind { ABORT, RETRY, REJECT }
+
+    private fun ApiException.failureKind(): FailureKind = when {
+        status == 401 || error == ERROR_ACCOUNT_DELETED -> FailureKind.ABORT
+        status == 408 || status == 429 || status !in 400..499 -> FailureKind.RETRY
+        else -> FailureKind.REJECT
+    }
+
+    /** 30 s after the first failure, doubling per attempt, capped at one hour. */
+    private fun retryDelayMillis(attempts: Long): Long {
+        val doublings = attempts.coerceIn(0L, MAX_DOUBLINGS).toInt()
+        return minOf(RETRY_BASE_DELAY_MS shl doublings, RETRY_MAX_DELAY_MS)
+    }
 
     /** A DELETE that already finished on the server (404) counts as success. */
     private suspend fun ignoreNotFound(call: suspend () -> Unit) {
@@ -342,5 +380,8 @@ class SyncEngine(
     private companion object {
         const val PAGE_LIMIT = 100
         const val LAST_SYNC_KEY = "last_sync_at"
+        const val RETRY_BASE_DELAY_MS = 30_000L
+        const val RETRY_MAX_DELAY_MS = 3_600_000L
+        const val MAX_DOUBLINGS = 10L
     }
 }

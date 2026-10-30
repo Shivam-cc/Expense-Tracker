@@ -33,6 +33,9 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
     var expenseWriteError: ApiException? = null
     var categoryWriteError: ApiException? = null
 
+    /** Fails only the expense writes it returns an error for, so one row can fail while others succeed. */
+    var expenseWriteFault: ((ExpenseWriteDto) -> ApiException?)? = null
+
     /** Runs before a create or update is applied, to simulate a local edit made while a request is in flight. */
     var beforeExpenseWrite: (() -> Unit)? = null
 
@@ -91,6 +94,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
     override suspend fun createExpense(request: ExpenseWriteDto): ExpenseDto {
         beforeExpenseWrite?.invoke()
         expenseWriteError?.let { throw it }
+        expenseWriteFault?.invoke(request)?.let { throw it }
         expenses.values.firstOrNull { it.clientId == request.clientId }?.let { return it }
         val id = nextId++
         val dto = ExpenseDto(
@@ -113,6 +117,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
     override suspend fun updateExpense(id: Long, request: ExpenseWriteDto): ExpenseDto {
         beforeExpenseWrite?.invoke()
         expenseWriteError?.let { throw it }
+        expenseWriteFault?.invoke(request)?.let { throw it }
         val existing = expenses[id] ?: throw ApiException(404, "Expense $id not found")
         val dto = existing.copy(
             description = request.description,
