@@ -328,9 +328,11 @@ retention window would otherwise keep rows the server has forgotten. This is a p
 
 ## Verification
 
-`mobile/shared/src/jvmTest/.../SyncE2ETest` runs this contract against a live local backend: register, OTP,
-login, offline writes, sync, edit, delete, second device, and refresh rotation. It skips when the backend is not
-reachable. See the README "Mobile App" section for how to run it.
+`mobile/shared/src/jvmTest/kotlin/com/expensetracker/mobile/e2e/SyncE2ETest.kt` runs this contract against a live local
+backend: register (OTP from the local profile), login, offline writes, sync, edit, delete, a second device, and refresh
+rotation with reuse detection. It asserts exact minor-unit amounts across INR, JPY, and KWD. Both tests skip when the
+backend is not reachable at `EXPENSEFLOW_API_URL` (default `http://localhost:8080`). Run steps are in the README
+"Mobile App" section.
 
 ## Example session
 
