@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.UUID;
 import java.util.function.Function;
 
 /** Issues and validates short-lived access tokens. Refresh tokens are opaque and handled by {@link RefreshTokenService}. */
@@ -48,6 +49,7 @@ public class JwtService {
     public String generateAccessToken(User user) {
         long now = System.currentTimeMillis();
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(user.getUsername())
                 .claim(TOKEN_VERSION_CLAIM, user.getTokenVersion())
                 .issuedAt(new Date(now))
