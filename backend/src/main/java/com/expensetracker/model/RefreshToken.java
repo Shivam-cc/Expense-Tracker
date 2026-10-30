@@ -32,4 +32,7 @@ public class RefreshToken implements IdentifiedDocument {
     private LocalDateTime revokedAt;
 
     private Long replacedBy;
+
+    /** Set when the owning account is deleted. The row is kept (hash and timestamps only) so refresh can report the deletion. */
+    private boolean accountDeleted;
 }

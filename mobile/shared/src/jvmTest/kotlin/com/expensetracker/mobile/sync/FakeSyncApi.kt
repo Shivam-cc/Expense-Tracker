@@ -6,6 +6,7 @@ import com.expensetracker.mobile.api.AuthResponseDto
 import com.expensetracker.mobile.api.CategoryDto
 import com.expensetracker.mobile.api.CategoryWriteDto
 import com.expensetracker.mobile.api.ChangePage
+import com.expensetracker.mobile.api.DeleteAccountRequestDto
 import com.expensetracker.mobile.api.ExpenseDto
 import com.expensetracker.mobile.api.ExpenseFlowApi
 import com.expensetracker.mobile.api.ExpenseWriteDto
@@ -73,6 +74,10 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
     override suspend fun login(request: AuthRequestDto): AuthResponseDto = notImplemented()
 
     override suspend fun refresh(request: RefreshRequestDto): AuthResponseDto = notImplemented()
+
+    override suspend fun deleteAccount(request: DeleteAccountRequestDto) {
+        notImplemented()
+    }
 
     override suspend fun logout(request: RefreshRequestDto) {
         notImplemented()

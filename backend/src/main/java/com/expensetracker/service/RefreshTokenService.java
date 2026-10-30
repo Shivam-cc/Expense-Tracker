@@ -46,6 +46,9 @@ public class RefreshTokenService {
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
         LocalDateTime now = LocalDateTime.now();
 
+        if (current.isAccountDeleted()) {
+            throw new UnauthorizedException(UnauthorizedException.ACCOUNT_DELETED, "Account has been deleted");
+        }
         if (current.getRevokedAt() != null) {
             refreshTokenRepository.revokeFamily(current.getFamilyId(), now);
             throw new UnauthorizedException("Invalid refresh token");
@@ -76,9 +79,14 @@ public class RefreshTokenService {
         refreshTokenRepository.revokeAllForUser(userId, LocalDateTime.now());
     }
 
+    /**
+     * Ends every session of a deleted account. Tokens are revoked and their owner link is removed, leaving only
+     * the token hash and timestamps, so a later refresh can report {@code account_deleted} instead of a generic 401.
+     */
     @Transactional
-    public void deleteAllForUser(Long userId) {
-        refreshTokenRepository.deleteByUserId(userId);
+    public void retireAccountSessions(Long userId) {
+        refreshTokenRepository.revokeAllForUser(userId, LocalDateTime.now());
+        refreshTokenRepository.detachAccount(userId);
     }
 
     @Scheduled(fixedDelay = 3_600_000L)

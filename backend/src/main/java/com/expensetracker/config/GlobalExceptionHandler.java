@@ -40,7 +40,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Object> handleApiException(ApiException ex, HttpServletRequest request) {
-        return build(ex.getStatus(), ex.getMessage(), request, null);
+        return body(ex.getStatus(), ex.getMessage(), request.getRequestURI(), null, ex.getErrorCode(), ex.getDetails());
     }
 
     @ExceptionHandler(BadCredentialsException.class)
@@ -157,15 +157,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private ResponseEntity<Object> body(HttpStatus status, String message, String path, Map<String, String> errors) {
+        return body(status, message, path, errors, null, Map.of());
+    }
+
+    private ResponseEntity<Object> body(HttpStatus status, String message, String path, Map<String, String> errors,
+                                        String errorCode, Map<String, Object> details) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now().toString());
         body.put("status", status.value());
-        body.put("error", status.getReasonPhrase());
+        body.put("error", errorCode != null ? errorCode : status.getReasonPhrase());
         body.put("message", message);
         body.put("path", path);
         if (errors != null && !errors.isEmpty()) {
             body.put("errors", errors);
         }
+        details.forEach(body::putIfAbsent);
         return ResponseEntity.status(status).body(body);
     }
 }

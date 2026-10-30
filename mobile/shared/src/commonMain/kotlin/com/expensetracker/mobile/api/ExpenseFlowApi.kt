@@ -12,6 +12,7 @@ interface ExpenseFlowApi {
     suspend fun login(request: AuthRequestDto): AuthResponseDto
     suspend fun refresh(request: RefreshRequestDto): AuthResponseDto
     suspend fun logout(request: RefreshRequestDto)
+    suspend fun deleteAccount(request: DeleteAccountRequestDto)
 
     suspend fun getExpenseChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<ExpenseDto>
     suspend fun createExpense(request: ExpenseWriteDto): ExpenseDto
@@ -24,5 +25,11 @@ interface ExpenseFlowApi {
     suspend fun deleteCategory(id: Long)
 }
 
-/** Thrown for any non-2xx response. [status] is the HTTP code, [message] the backend error message if present. */
-class ApiException(val status: Int, override val message: String) : Exception(message)
+/** Error code the backend returns with 401 when the refresh token belongs to a deleted account. */
+const val ERROR_ACCOUNT_DELETED = "account_deleted"
+
+/**
+ * Thrown for any non-2xx response. [status] is the HTTP code, [message] the backend error message if present,
+ * and [error] the backend's machine-readable error code (for example [ERROR_ACCOUNT_DELETED]) if present.
+ */
+class ApiException(val status: Int, override val message: String, val error: String? = null) : Exception(message)

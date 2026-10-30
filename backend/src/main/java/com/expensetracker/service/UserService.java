@@ -79,7 +79,7 @@ public class UserService {
         withVerifiedPassword(principal, password, user -> {
             expenseRepository.deleteByUserId(user.getId());
             categoryRepository.deleteByUserId(user.getId());
-            refreshTokenService.deleteAllForUser(user.getId());
+            refreshTokenService.retireAccountSessions(user.getId());
             otpService.deleteAllForEmail(user.getEmail());
             userRepository.delete(user);
             return null;

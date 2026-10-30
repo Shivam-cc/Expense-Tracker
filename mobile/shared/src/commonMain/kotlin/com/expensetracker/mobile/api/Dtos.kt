@@ -78,6 +78,9 @@ data class AuthRequestDto(val email: String, val password: String)
 data class RefreshRequestDto(val refreshToken: String)
 
 @Serializable
+data class DeleteAccountRequestDto(val password: String)
+
+@Serializable
 data class AuthResponseDto(
     val token: String,
     val refreshToken: String,

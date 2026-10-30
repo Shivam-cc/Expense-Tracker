@@ -3,6 +3,8 @@ package com.expensetracker.mobile.e2e
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.expensetracker.mobile.api.ApiException
 import com.expensetracker.mobile.api.ChangePage
+import com.expensetracker.mobile.api.DeleteAccountRequestDto
+import com.expensetracker.mobile.api.ERROR_ACCOUNT_DELETED
 import com.expensetracker.mobile.api.ExpenseDto
 import com.expensetracker.mobile.api.KtorExpenseFlowApi
 import com.expensetracker.mobile.api.RefreshRequestDto
@@ -35,8 +37,10 @@ import java.net.URI
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -158,6 +162,39 @@ class SyncE2ETest {
         } finally {
             a.close()
             b.close()
+        }
+    }
+
+    @Test
+    fun deletedAccountRefreshReportsAccountDeletedAndWipesLocalData() = runBlocking {
+        assumeBackendRunning(baseUrl)
+        val email = uniqueEmail("deleted")
+        val a = Device(baseUrl)
+        try {
+            a.auth.register(NAME, email, PASSWORD, fetchDevOtp(baseUrl, email))
+            val categoryId = a.categories.add("E2E Deleted")
+            a.expenses.add("Synced", "10.00", "INR", DATE, categoryClientId = categoryId)
+            a.engine.sync()
+            assertEquals(0L, a.outboxCount())
+            val refreshBeforeDelete = assertNotNull(a.store.load()).refreshToken
+
+            a.api.deleteAccount(DeleteAccountRequestDto(PASSWORD))
+
+            // Unsynced data that must be wiped together with the account.
+            a.expenses.add("Offline after delete", "3.00", "INR", DATE)
+            assertEquals(1L, a.outboxCount())
+
+            val signal = assertFailsWith<ApiException> { a.authApi.refresh(RefreshRequestDto(refreshBeforeDelete)) }
+            assertEquals(401, signal.status)
+            assertEquals(ERROR_ACCOUNT_DELETED, signal.error)
+
+            assertFalse(a.auth.refreshAfterUnauthorized())
+            assertNull(a.store.load())
+            assertEquals(0L, a.outboxCount())
+            assertTrue(a.db.expenseFlowQueries.selectActiveExpenses().executeAsList().isEmpty())
+            assertTrue(a.db.expenseFlowQueries.selectActiveCategories().executeAsList().isEmpty())
+        } finally {
+            a.close()
         }
     }
 

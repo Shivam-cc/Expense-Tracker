@@ -233,6 +233,9 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
 
         login(email, PASSWORD, 401);
         send(get("/api/users/me").header("Authorization", bearer(auth)), 401);
+
+        JsonNode refreshed = send(jsonPost("/api/auth/refresh", Map.of("refreshToken", auth.get("refreshToken").asText())), 401);
+        assertThat(refreshed.get("error").asText()).isEqualTo("account_deleted");
     }
 
     @Test

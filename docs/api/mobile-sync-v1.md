@@ -38,6 +38,7 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 |---|---|
 | 400 | Invalid body or parameter: missing or non-UUID `clientId`, failed field validation, `limit` outside 1..500, unparseable `updatedSince`, or invalid `cursor`. |
 | 401 | Rejected by the existing authentication layer when the access token is missing or invalid. |
+| 401 `error: "account_deleted"` | Returned by `/api/auth/refresh` when the refresh token belonged to a deleted account. Distinct from an expired or revoked session. Clients wipe local data. See Notes for clients. |
 | 403 | Attempt to change a global (built-in) category with PUT or DELETE. |
 | 404 | Record does not exist, belongs to another user, or is a tombstone (for PUT), or a referenced category is missing, another user's, or deleted. |
 | 409 | Category name matches a built-in category (case-insensitive). |
@@ -323,8 +324,15 @@ retention window would otherwise keep rows the server has forgotten. This is a p
 - `updatedAt` is always set by the server. Clients should not send it.
 - `createdAt` is nullable.
 - An expense's `currency` can differ from the user's profile currency. Show it next to the amount.
-- If `/api/auth/refresh` returns `401` or `404` for a deleted account, the client must wipe its local database, outbox,
-  and tokens. The account is gone, so nothing can be synced.
+- Refresh failures on `POST /api/auth/refresh` are handled by the body's `error` field:
+  - `401` with `error: "account_deleted"`: the account was deleted. Wipe the local database, outbox, and tokens. Nothing
+    can be synced, so the data is discarded.
+  - Any other `400`, `401`, `403`, or `404` (expired, revoked, or reused refresh token): clear the tokens and require
+    sign-in. Keep the local database and outbox. Unsynced expenses are kept and synced after the next sign-in.
+  - Only `account_deleted` wipes local data. A deleted account's refresh rows are kept as hashed, detached records for
+    about 37 days so the signal can be returned. After that, the client gets a generic `401` and treats it as an
+    ordinary expiry.
+
 
 ## Verification
 

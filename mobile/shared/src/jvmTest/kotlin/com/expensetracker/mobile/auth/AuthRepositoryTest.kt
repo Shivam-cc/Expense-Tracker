@@ -6,6 +6,8 @@ import com.expensetracker.mobile.api.AuthResponseDto
 import com.expensetracker.mobile.api.CategoryDto
 import com.expensetracker.mobile.api.CategoryWriteDto
 import com.expensetracker.mobile.api.ChangePage
+import com.expensetracker.mobile.api.DeleteAccountRequestDto
+import com.expensetracker.mobile.api.ERROR_ACCOUNT_DELETED
 import com.expensetracker.mobile.api.ExpenseDto
 import com.expensetracker.mobile.api.ExpenseFlowApi
 import com.expensetracker.mobile.api.ExpenseWriteDto
@@ -71,6 +73,10 @@ private class FakeAuthApi : ExpenseFlowApi {
     override suspend fun logout(request: RefreshRequestDto) {
         logoutCalls++
         logoutHandler(request.refreshToken)
+    }
+
+    override suspend fun deleteAccount(request: DeleteAccountRequestDto) {
+        throw NotImplementedError("not used by auth tests")
     }
 
     override suspend fun getExpenseChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<ExpenseDto> {
@@ -195,8 +201,27 @@ class AuthRepositoryTest {
 
             assertFalse(f.repo.refreshAfterUnauthorized(), "status $status")
             assertNull(f.store.load(), "status $status")
-            assertEquals(1, wipes, "status $status")
+            assertEquals(0, wipes, "status $status: only account_deleted may wipe local data")
         }
+    }
+
+    @Test
+    fun expiredSessionKeepsUnsyncedExpenses() = runTest {
+        var wipes = 0
+        val h = SyncTestHarness()
+        val f = Fixture(onWipe = { wipes++; LocalDataWiper(h.db).wipe() })
+        h.expenses.add("Lunch", "12.50", "INR", LocalDate.parse("2026-01-02"))
+        f.signIn()
+        val unsynced = h.outboxCount()
+        assertTrue(unsynced > 0)
+        f.api.refreshHandler = { throw ApiException(401, "Refresh token expired") }
+
+        assertFalse(f.repo.refreshAfterUnauthorized())
+
+        assertNull(f.store.load())
+        assertEquals(0, wipes)
+        assertEquals(unsynced, h.outboxCount())
+        assertEquals(1, h.db.expenseFlowQueries.selectActiveExpenses().executeAsList().size)
     }
 
     @Test
@@ -208,7 +233,7 @@ class AuthRepositoryTest {
         h.db.expenseFlowQueries.upsertSyncState("expense.cursor", "2")
         f.signIn()
         assertTrue(h.outboxCount() > 0)
-        f.api.refreshHandler = { throw ApiException(404, "Account not found") }
+        f.api.refreshHandler = { throw ApiException(401, "Account has been deleted", ERROR_ACCOUNT_DELETED) }
 
         assertFalse(f.repo.refreshAfterUnauthorized())
 

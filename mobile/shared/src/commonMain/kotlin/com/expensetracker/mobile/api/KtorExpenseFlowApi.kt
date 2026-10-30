@@ -18,6 +18,7 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -60,6 +61,10 @@ class KtorExpenseFlowApi(
 
     override suspend fun logout(request: RefreshRequestDto) {
         unauthenticated(HttpMethod.Post, "/api/auth/logout") { jsonBody(request) }
+    }
+
+    override suspend fun deleteAccount(request: DeleteAccountRequestDto) {
+        authorized(HttpMethod.Delete, "/api/users/me") { jsonBody(request) }
     }
 
     override suspend fun getExpenseChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<ExpenseDto> =
@@ -125,14 +130,12 @@ class KtorExpenseFlowApi(
     private suspend fun ensureSuccess(response: HttpResponse): HttpResponse {
         val status = response.status.value
         if (status in 200..299) return response
-        val message = extractMessage(response.bodyAsText()) ?: "HTTP $status"
-        throw ApiException(status, message)
+        val payload = runCatching { Json.parseToJsonElement(response.bodyAsText()).jsonObject }.getOrNull()
+        val message = payload?.stringField("message")?.takeIf { it.isNotBlank() } ?: "HTTP $status"
+        throw ApiException(status, message, payload?.stringField("error"))
     }
 
-    private fun extractMessage(body: String): String? =
-        runCatching {
-            Json.parseToJsonElement(body).jsonObject["message"]?.jsonPrimitive?.contentOrNull
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    private fun JsonObject.stringField(name: String): String? = this[name]?.jsonPrimitive?.contentOrNull
 
     private fun HttpRequestBuilder.changeParams(updatedSince: Instant?, cursor: String?, limit: Int) {
         updatedSince?.let { parameter("updatedSince", it.toString()) }

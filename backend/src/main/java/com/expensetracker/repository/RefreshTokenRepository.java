@@ -21,8 +21,9 @@ public interface RefreshTokenRepository extends DocumentRepository<RefreshToken>
     @Update("{ '$set': { 'revokedAt': ?1 } }")
     long revokeAllForUser(Long userId, LocalDateTime now);
 
-    @Query(value = "{ 'userId': ?0 }", delete = true)
-    long deleteByUserId(Long userId);
+    @Query("{ 'userId': ?0 }")
+    @Update("{ '$set': { 'accountDeleted': true }, '$unset': { 'userId': '' } }")
+    long detachAccount(Long userId);
 
     @Query(value = "{ 'expiresAt': { '$lt': ?0 } }", delete = true)
     long deleteExpiredBefore(LocalDateTime cutoff);

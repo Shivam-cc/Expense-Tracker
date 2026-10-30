@@ -4,6 +4,7 @@ import com.expensetracker.mobile.api.AccessTokenProvider
 import com.expensetracker.mobile.api.ApiException
 import com.expensetracker.mobile.api.AuthRequestDto
 import com.expensetracker.mobile.api.AuthResponseDto
+import com.expensetracker.mobile.api.ERROR_ACCOUNT_DELETED
 import com.expensetracker.mobile.api.ExpenseFlowApi
 import com.expensetracker.mobile.api.RefreshRequestDto
 import com.expensetracker.mobile.api.RegisterRequestDto
@@ -16,8 +17,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Refresh statuses meaning the session is no longer valid: the token is invalid, expired, revoked, or the
- * account no longer exists (404). Local tokens and synced data are wiped in these cases.
+ * Refresh statuses meaning the session is no longer valid: the token is invalid, expired, or revoked.
+ * Clearing the session does NOT wipe local data. Only [ERROR_ACCOUNT_DELETED] wipes it, because an ordinary
+ * expiry can leave unsynced expenses that must survive until the user signs in again.
  */
 private val INVALID_REFRESH_STATUSES = setOf(400, 401, 403, 404)
 
@@ -70,7 +72,8 @@ class AuthRepository(
 
     /**
      * Refreshes unless another caller already rotated the token that [staleAccessToken] belongs to.
-     * Returns false only when the session was rejected, in which case tokens and local data have been wiped.
+     * Returns false when the session was rejected. Tokens are always cleared. Local data is wiped only when
+     * the server reports that the account was deleted.
      */
     private suspend fun refreshIfStillStale(staleAccessToken: String): Boolean = refreshMutex.withLock {
         val current = store.load() ?: return@withLock false
@@ -81,7 +84,7 @@ class AuthRepository(
         } catch (e: ApiException) {
             if (e.status !in INVALID_REFRESH_STATUSES) throw e
             store.clear()
-            wipeLocalData()
+            if (e.error == ERROR_ACCOUNT_DELETED) wipeLocalData()
             false
         }
     }
