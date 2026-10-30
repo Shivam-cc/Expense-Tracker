@@ -49,9 +49,33 @@ class SyncEngine(
             try {
                 pushCategory(op)
             } catch (e: ApiException) {
+                val existing = e.existingCategory
+                if (e.status == 409 && existing != null && op.operation == OutboxOperation.CREATE.name) {
+                    adoptDefaultCategory(op.client_id, existing)
+                    continue
+                }
                 if (!e.isClientRejection()) throw e
                 queries.incrementOutboxAttempts(op.seq)
             }
+        }
+    }
+
+    /**
+     * The server already has a default category with this name. The local duplicate is replaced by that
+     * default: its expenses move to the default's row and its outbox entry and row are removed.
+     */
+    private fun adoptDefaultCategory(duplicateClientId: String, existing: CategoryDto) {
+        db.transaction {
+            applyCategory(existing)
+            val builtIn = queries.selectCategoryByServerId(existing.id).executeAsOneOrNull()
+                ?: return@transaction
+            queries.remapExpenseCategory(
+                fromClientId = duplicateClientId,
+                toClientId = builtIn.id,
+                toServerId = existing.id,
+            )
+            queries.deleteOutboxForClient(OutboxEntity.CATEGORY.name, duplicateClientId)
+            queries.deleteCategoryById(duplicateClientId)
         }
     }
 

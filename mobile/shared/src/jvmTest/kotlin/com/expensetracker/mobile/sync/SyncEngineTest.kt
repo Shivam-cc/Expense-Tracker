@@ -1,7 +1,9 @@
 package com.expensetracker.mobile.sync
 
 import com.expensetracker.mobile.api.ApiException
+import com.expensetracker.mobile.api.CategoryDto
 import com.expensetracker.mobile.api.ExpenseDto
+import com.expensetracker.mobile.util.Uuid7
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import java.io.IOException
@@ -17,6 +19,60 @@ class SyncEngineTest {
 
     private fun SyncTestHarness.syncState(key: String): String? =
         db.expenseFlowQueries.selectSyncState(key).executeAsOneOrNull()
+
+    /** Writes a category without the reserved-name check, as a device that predates the check would have. */
+    private fun SyncTestHarness.addUnvalidatedCategory(name: String): String {
+        val id = Uuid7.generate()
+        db.expenseFlowQueries.upsertCategory(id, null, name, null, null, 0L, clock.now().toEpochMilliseconds(), null)
+        db.enqueue(OutboxEntity.CATEGORY, id, OutboxOperation.CREATE)
+        return id
+    }
+
+    @Test
+    fun createThatDuplicatesADefaultCategoryAdoptsTheDefault() = runTest {
+        val h = SyncTestHarness()
+        val localFood = h.addUnvalidatedCategory("Food")
+        val expenseId = h.expenses.add("Dinner", "30.00", "INR", date, categoryClientId = localFood)
+        val serverFood = CategoryDto(id = 42L, name = "Food", global = true, updatedAt = h.clock.now())
+        h.api.categories[42L] = serverFood
+        h.api.categoryWriteError = ApiException(
+            409,
+            "A default category named \"Food\" already exists",
+            existingCategory = serverFood,
+        )
+
+        h.engine.sync()
+
+        assertNull(h.db.expenseFlowQueries.selectCategoryById(localFood).executeAsOneOrNull())
+        val builtIn = h.db.expenseFlowQueries.selectCategoryByServerId(42L).executeAsOne()
+        assertTrue(builtIn.is_global != 0L)
+        assertEquals(1, h.db.expenseFlowQueries.selectActiveCategories().executeAsList().count { it.name == "Food" })
+        val expense = h.db.expenseFlowQueries.selectExpenseById(expenseId).executeAsOne()
+        assertEquals(builtIn.id, expense.category_client_id)
+        assertEquals(42L, expense.category_server_id)
+        assertEquals(0L, h.outboxCount())
+        assertEquals(42L, h.api.expenses.getValue(expense.server_id!!).categoryId)
+    }
+
+    @Test
+    fun conflictOnUpdateIsNotAdoptedAndStaysInOutboxWithAttemptCounted() = runTest {
+        val h = SyncTestHarness()
+        val id = h.categories.add("Sport")
+        h.engine.sync()
+        h.categories.rename(id, "Gym")
+        h.api.categoryWriteError = ApiException(
+            409,
+            "A default category named \"Food\" already exists",
+            existingCategory = CategoryDto(id = 42L, name = "Food", global = true, updatedAt = h.clock.now()),
+        )
+
+        h.engine.sync()
+
+        assertEquals("Gym", h.db.expenseFlowQueries.selectCategoryById(id).executeAsOne().name)
+        val op = h.db.expenseFlowQueries.selectOutboxForClient(OutboxEntity.CATEGORY.name, id).executeAsOne()
+        assertEquals(OutboxOperation.UPDATE.name, op.operation)
+        assertEquals(1L, op.attempts)
+    }
 
     @Test
     fun pushCreateStoresServerIdAndEmptiesOutbox() = runTest {
@@ -107,7 +163,7 @@ class SyncEngineTest {
     @Test
     fun expenseWithUnsyncedCategoryStaysInOutbox() = runTest {
         val h = SyncTestHarness()
-        val categoryId = h.categories.add("Food")
+        val categoryId = h.categories.add("Takeout")
         h.api.categoryWriteError = ApiException(400, "rejected")
         val expenseId = h.expenses.add("Dinner", "30.00", "INR", date, categoryClientId = categoryId)
 

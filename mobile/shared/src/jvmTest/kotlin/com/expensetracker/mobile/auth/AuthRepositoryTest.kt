@@ -228,8 +228,7 @@ class AuthRepositoryTest {
     fun deletedAccountRefreshWipesLocalDataOutboxAndTokens() = runTest {
         val h = SyncTestHarness()
         val f = Fixture(onWipe = { LocalDataWiper(h.db).wipe() })
-        val categoryId = h.categories.add("Food")
-        h.expenses.add("Dinner", "30.00", "INR", LocalDate.parse("2026-01-01"), categoryClientId = categoryId)
+        val categoryId = h.categories.add("Takeout")
         h.db.expenseFlowQueries.upsertSyncState("expense.cursor", "2")
         f.signIn()
         assertTrue(h.outboxCount() > 0)

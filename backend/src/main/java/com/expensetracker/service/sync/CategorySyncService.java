@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -144,15 +145,21 @@ public class CategorySyncService {
                 Category.class));
     }
 
-    /** Same rule as {@code CategoryService}: a name that matches a live default category is rejected. */
+    /**
+     * Same rule as {@code CategoryService}: a name that matches a live default category is rejected.
+     * The 409 body carries that default as {@code existingCategory} so the client can adopt it.
+     */
     private void ensureNameNotDefault(String name) {
         Pattern exactName = Pattern.compile("^" + Pattern.quote(name) + "$", Pattern.CASE_INSENSITIVE);
         Query query = Query.query(new Criteria().andOperator(
                 Criteria.where("user").isNull(),
                 Criteria.where("deletedAt").isNull(),
                 Criteria.where("name").regex(exactName)));
-        if (mongoTemplate.exists(query, Category.class)) {
-            throw new ConflictException("A default category named \"" + name + "\" already exists");
+        Category existing = mongoTemplate.findOne(query, Category.class);
+        if (existing != null) {
+            throw new ConflictException(
+                    "A default category named \"" + name + "\" already exists",
+                    Map.of("existingCategory", toResponse(existing)));
         }
     }
 

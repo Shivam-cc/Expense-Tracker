@@ -105,6 +105,12 @@ UPDATE category SET server_id = :serverId, updated_at = :updatedAt WHERE id = :i
 setCategoryServerId:
 UPDATE category SET server_id = :serverId WHERE id = :id;
 
+deleteCategoryById:
+DELETE FROM category WHERE id = :id;
+
+remapExpenseCategory:
+UPDATE expense SET category_client_id = :toClientId, category_server_id = :toServerId WHERE category_client_id = :fromClientId;
+
 selectOutboxForClient:
 SELECT * FROM outbox WHERE entity = :entity AND client_id = :clientId;
 
@@ -125,6 +131,9 @@ UPDATE outbox SET attempts = attempts + 1 WHERE seq = :seq;
 
 deleteOutbox:
 DELETE FROM outbox WHERE seq = :seq;
+
+deleteOutboxForClient:
+DELETE FROM outbox WHERE entity = :entity AND client_id = :clientId;
 
 selectSyncState:
 SELECT value FROM sync_state WHERE key = :key;

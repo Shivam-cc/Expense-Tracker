@@ -14,8 +14,12 @@ import com.expensetracker.mobile.data.CategoryRepository
 import com.expensetracker.mobile.data.ExpenseRepository
 import com.expensetracker.mobile.data.LocalDataWiper
 import com.expensetracker.mobile.db.ExpenseFlowDatabase
+import com.expensetracker.mobile.sync.OutboxEntity
+import com.expensetracker.mobile.sync.OutboxOperation
 import com.expensetracker.mobile.sync.SyncEngine
 import com.expensetracker.mobile.sync.TestClock
+import com.expensetracker.mobile.sync.enqueue
+import com.expensetracker.mobile.util.Uuid7
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.post
@@ -193,6 +197,42 @@ class SyncE2ETest {
             assertEquals(0L, a.outboxCount())
             assertTrue(a.db.expenseFlowQueries.selectActiveExpenses().executeAsList().isEmpty())
             assertTrue(a.db.expenseFlowQueries.selectActiveCategories().executeAsList().isEmpty())
+        } finally {
+            a.close()
+        }
+    }
+
+    @Test
+    fun unvalidatedFoodCategoryIsAdoptedFromTheServerDefault() = runBlocking {
+        assumeBackendRunning(baseUrl)
+        val email = uniqueEmail("default-food")
+        val a = Device(baseUrl)
+        try {
+            a.auth.register(NAME, email, PASSWORD, fetchDevOtp(baseUrl, email))
+
+            // Write a "Food" row directly, bypassing CategoryRepository's reserved-name check,
+            // to model a client that drifted from the backend's defaults.
+            val localFoodId = Uuid7.generate()
+            a.db.expenseFlowQueries.upsertCategory(
+                localFoodId, null, "Food", null, null, 0L, a.clock.now().toEpochMilliseconds(), null,
+            )
+            a.db.enqueue(OutboxEntity.CATEGORY, localFoodId, OutboxOperation.CREATE)
+            a.expenses.add("Lunch", "7.00", "INR", DATE, categoryClientId = localFoodId)
+
+            a.engine.sync()
+            assertEquals(0L, a.outboxCount(), "adoption must drain the outbox, not leave the duplicate queued")
+
+            val seedFood = a.serverCategories().single { it.name == "Food" && it.global && it.deletedAt == null }
+            val localFoods = a.db.expenseFlowQueries.selectActiveCategories().executeAsList()
+                .filter { it.name == "Food" }
+            val adopted = localFoods.single()
+            assertEquals(seedFood.id, adopted.server_id, "local Food must point at the server's default")
+            assertTrue(adopted.is_global != 0L, "adopted category must be the global default")
+
+            val lunch = a.expenses.observe().first().single { it.description == "Lunch" }
+            assertEquals(adopted.id, lunch.categoryClientId, "expense must be remapped to the adopted category")
+            assertEquals(seedFood.id, lunch.categoryServerId)
+            assertEquals(seedFood.id, a.serverExpenses().byDescription("Lunch").categoryId)
         } finally {
             a.close()
         }

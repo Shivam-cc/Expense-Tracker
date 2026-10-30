@@ -76,6 +76,17 @@ class CategoryRepository(
     private fun requireName(name: String): String {
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "Category name must not be blank" }
+        require(RESERVED_NAMES.none { it.equals(trimmed, ignoreCase = true) }) {
+            "\"$trimmed\" is a built-in category name"
+        }
         return trimmed
+    }
+
+    private companion object {
+        /** Mirrors the default categories seeded by the backend. Server adoption covers any drift. */
+        val RESERVED_NAMES = listOf(
+            "Food", "Groceries", "Coffee", "Train", "Car", "Flights", "Shopping", "Home",
+            "Bills", "Health", "Fitness", "Entertainment", "Education", "Gifts", "Subscriptions", "Other",
+        )
     }
 }

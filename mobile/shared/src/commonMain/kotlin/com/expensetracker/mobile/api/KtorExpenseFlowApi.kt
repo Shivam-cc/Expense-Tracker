@@ -20,8 +20,11 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+
+private val ErrorJson = Json { ignoreUnknownKeys = true }
 
 class KtorExpenseFlowApi(
     private val baseUrl: String,
@@ -132,7 +135,10 @@ class KtorExpenseFlowApi(
         if (status in 200..299) return response
         val payload = runCatching { Json.parseToJsonElement(response.bodyAsText()).jsonObject }.getOrNull()
         val message = payload?.stringField("message")?.takeIf { it.isNotBlank() } ?: "HTTP $status"
-        throw ApiException(status, message, payload?.stringField("error"))
+        val existingCategory = payload?.get("existingCategory")?.let { element ->
+            runCatching { ErrorJson.decodeFromJsonElement<CategoryDto>(element) }.getOrNull()
+        }
+        throw ApiException(status, message, payload?.stringField("error"), existingCategory)
     }
 
     private fun JsonObject.stringField(name: String): String? = this[name]?.jsonPrimitive?.contentOrNull

@@ -41,7 +41,7 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 | 401 `error: "account_deleted"` | Returned by `/api/auth/refresh` when the refresh token belonged to a deleted account. Distinct from an expired or revoked session. Clients wipe local data. See Notes for clients. |
 | 403 | Attempt to change a global (built-in) category with PUT or DELETE. |
 | 404 | Record does not exist, belongs to another user, or is a tombstone (for PUT), or a referenced category is missing, another user's, or deleted. |
-| 409 | Category name matches a built-in category (case-insensitive). |
+| 409 | Category name matches a built-in category (case-insensitive). The body includes `existingCategory` (the built-in `CategoryV1`). Clients adopt it instead of retrying. See Notes for clients. |
 
 ## Data model
 
@@ -266,7 +266,9 @@ Creates a category. Idempotent by `clientId` for the caller, with the same rules
 - `200 OK` with the existing `CategoryV1` when `clientId` already exists for this user, including a tombstone. The
   stored record is returned unchanged.
 - `400` for a missing or non-UUID `clientId`, or other validation failures.
-- `409 Conflict` when `name` matches a live built-in category, case-insensitively.
+- `409 Conflict` when `name` matches a live built-in category, case-insensitively. The body includes
+  `existingCategory`, the built-in `CategoryV1` (with its server `id`). Clients adopt that ID: they remap local expenses and
+  outbox rows to it and drop the local duplicate. See Notes for clients.
 
 ### PUT /api/v1/categories/{id}
 
@@ -321,6 +323,10 @@ retention window would otherwise keep rows the server has forgotten. This is a p
 - A category deleted on the server clears `categoryId` on its expenses. Clients should apply the expense feed after
   the category feed, or handle a null `categoryId` that appears on an expense.
 - Creating or editing an expense with a deleted category returns 404. Clients should clear the selection and retry.
+- Creating a category whose name matches a built-in returns `409` with `existingCategory`. The client adopts that
+  category's `id`: it points local expenses and outbox rows at the built-in, drops the local duplicate, and does not
+  retry the create. A `409` on an update is not adopted; the edit stays in the outbox and counts as a failed attempt.
+  Clients also reject built-in names locally, so this path covers only a client that has drifted from the defaults.
 - `updatedAt` is always set by the server. Clients should not send it.
 - `createdAt` is nullable.
 - An expense's `currency` can differ from the user's profile currency. Show it next to the amount.

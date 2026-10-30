@@ -378,12 +378,19 @@ class SyncApiV1IntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void categoryNameMatchingADefaultCategoryReturns409() throws Exception {
+    void categoryNameMatchingADefaultCategoryReturns409WithTheDefaultCategory() throws Exception {
         JsonNode alice = register(uniqueEmail(), PASSWORD);
         String defaultName = "Sync Default " + UUID.randomUUID();
-        mongoTemplate.insert(Category.builder().name(defaultName).color("#112233").icon("g").build());
+        Category defaultCategory = mongoTemplate.insert(
+                Category.builder().name(defaultName).color("#112233").icon("g").build());
 
-        postV1("/api/v1/categories", alice, categoryBody(UUID.randomUUID().toString(), defaultName.toLowerCase()), 409);
+        JsonNode body = postV1("/api/v1/categories", alice,
+                categoryBody(UUID.randomUUID().toString(), defaultName.toLowerCase()), 409);
+
+        JsonNode existing = body.get("existingCategory");
+        assertThat(existing.get("id").asLong()).isEqualTo(defaultCategory.getId());
+        assertThat(existing.get("name").asText()).isEqualTo(defaultName);
+        assertThat(existing.get("global").asBoolean()).isTrue();
     }
 
     @Test

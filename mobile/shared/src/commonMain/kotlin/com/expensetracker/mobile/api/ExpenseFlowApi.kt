@@ -30,6 +30,12 @@ const val ERROR_ACCOUNT_DELETED = "account_deleted"
 
 /**
  * Thrown for any non-2xx response. [status] is the HTTP code, [message] the backend error message if present,
- * and [error] the backend's machine-readable error code (for example [ERROR_ACCOUNT_DELETED]) if present.
+ * [error] the backend's machine-readable error code (for example [ERROR_ACCOUNT_DELETED]) if present, and
+ * [existingCategory] the built-in category a 409 name conflict points at.
  */
-class ApiException(val status: Int, override val message: String, val error: String? = null) : Exception(message)
+class ApiException(
+    val status: Int,
+    override val message: String,
+    val error: String? = null,
+    val existingCategory: CategoryDto? = null,
+) : Exception(message)
