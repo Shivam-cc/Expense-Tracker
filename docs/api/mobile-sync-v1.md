@@ -362,6 +362,8 @@ retention window would otherwise keep rows the server has forgotten. This is a p
   sync succeeded) signs out. Signing out clears the local database, outbox, and tokens, then revokes the refresh token
   on the server as a best-effort step that never blocks or undoes the local wipe. Signing in as a different user runs
   the same flow first, with the same `discardUnsynced` count. Signing in as the same user keeps local data.
+- Timeouts: the client connects within 10 s and gives up on a request after 30 s. The sign-out revocation call
+  (`POST /api/auth/logout`) is limited to 5 s, so the local wipe is never held up by an unreachable or hanging server.
 
 
 ## Verification

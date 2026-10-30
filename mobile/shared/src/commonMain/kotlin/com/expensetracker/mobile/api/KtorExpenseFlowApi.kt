@@ -3,7 +3,9 @@ package com.expensetracker.mobile.api
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -26,14 +28,30 @@ import kotlinx.serialization.json.jsonPrimitive
 
 private val ErrorJson = Json { ignoreUnknownKeys = true }
 
+/**
+ * Network limits. [logoutMillis] bounds the best-effort revocation on sign-out, which is short so that
+ * signing out offline is not held up by a server that cannot be reached.
+ */
+data class ApiTimeouts(
+    val connectMillis: Long = 10_000,
+    val requestMillis: Long = 30_000,
+    val logoutMillis: Long = 5_000,
+)
+
 class KtorExpenseFlowApi(
     private val baseUrl: String,
     engine: HttpClientEngine,
     private val tokens: AccessTokenProvider? = null,
+    private val timeouts: ApiTimeouts = ApiTimeouts(),
 ) : ExpenseFlowApi {
 
     private val client: HttpClient = HttpClient(engine) {
         expectSuccess = false
+        install(HttpTimeout) {
+            connectTimeoutMillis = timeouts.connectMillis
+            requestTimeoutMillis = timeouts.requestMillis
+            socketTimeoutMillis = timeouts.requestMillis
+        }
         install(ContentNegotiation) {
             json(
                 Json {
@@ -63,7 +81,14 @@ class KtorExpenseFlowApi(
         unauthenticated(HttpMethod.Post, "/api/auth/refresh") { jsonBody(request) }.body<AuthResponseDto>()
 
     override suspend fun logout(request: RefreshRequestDto) {
-        unauthenticated(HttpMethod.Post, "/api/auth/logout") { jsonBody(request) }
+        unauthenticated(HttpMethod.Post, "/api/auth/logout") {
+            jsonBody(request)
+            timeout {
+                connectTimeoutMillis = minOf(timeouts.connectMillis, timeouts.logoutMillis)
+                requestTimeoutMillis = timeouts.logoutMillis
+                socketTimeoutMillis = timeouts.logoutMillis
+            }
+        }
     }
 
     override suspend fun deleteAccount(request: DeleteAccountRequestDto) {
