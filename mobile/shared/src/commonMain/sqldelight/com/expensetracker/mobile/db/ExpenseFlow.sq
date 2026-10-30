@@ -83,6 +83,19 @@ UPDATE expense SET server_id = :serverId WHERE id = :id;
 relinkExpensesToCategory:
 UPDATE expense SET category_client_id = :categoryClientId WHERE category_server_id = :serverId;
 
+selectSyncedExpenseServerIds:
+SELECT id, server_id FROM expense WHERE server_id IS NOT NULL;
+
+deleteExpenseById:
+DELETE FROM expense WHERE id = :id;
+
+selectSyncedCategoryServerIds:
+SELECT id, server_id FROM category WHERE server_id IS NOT NULL;
+
+clearExpenseCategory:
+UPDATE expense SET category_client_id = NULL, category_server_id = NULL
+WHERE category_client_id = :clientId OR category_server_id = :serverId;
+
 selectActiveCategories:
 SELECT * FROM category WHERE deleted_at IS NULL ORDER BY name;
 

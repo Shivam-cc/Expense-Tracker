@@ -247,7 +247,9 @@ class SyncEngine(
             name = "expense",
             fetch = { since, cursor -> api.getExpenseChanges(since, cursor, PAGE_LIMIT) },
             updatedAtOf = { it.updatedAt },
+            idOf = { it.id },
             applyItem = ::applyExpense,
+            deleteMissing = ::deleteExpensesMissingFromServer,
         )
     }
 
@@ -256,7 +258,9 @@ class SyncEngine(
             name = "category",
             fetch = { since, cursor -> api.getCategoryChanges(since, cursor, PAGE_LIMIT) },
             updatedAtOf = { it.updatedAt },
+            idOf = { it.id },
             applyItem = ::applyCategory,
+            deleteMissing = ::deleteCategoriesMissingFromServer,
         )
     }
 
@@ -264,24 +268,78 @@ class SyncEngine(
      * Pages through one changes feed. Each page is applied in one transaction together with its cursor
      * (or with the cleared cursor on the last page) and the updatedAt watermark. The watermark is the
      * updatedSince used for the next incremental pull, which the server treats as inclusive.
+     *
+     * A 410 means the saved cursor or watermark is no longer valid, so the feed restarts from the beginning
+     * (a full resync). Only a full resync that receives the whole feed reconciles: local rows the server did
+     * not return are deleted, except rows with a pending outbox entry. A full resync that fails partway deletes
+     * nothing and leaves a `<name>.reconcile` marker, so the next sync starts the full resync again instead of
+     * resuming a cursor whose earlier pages were not tracked.
      */
     private suspend fun <T> pullEntity(
         name: String,
         fetch: suspend (updatedSince: Instant?, cursor: String?) -> ChangePage<T>,
         updatedAtOf: (T) -> Instant,
+        idOf: (T) -> Long,
         applyItem: (T) -> Unit,
+        deleteMissing: (Set<Long>) -> Unit,
     ) {
+        if (getState("$name.reconcile") != null) {
+            fullResync(name, fetch, updatedAtOf, idOf, applyItem, deleteMissing)
+            return
+        }
         try {
             pullPages(name, fetch, updatedAtOf, applyItem)
         } catch (e: ApiException) {
             if (e.status != HTTP_GONE) throw e
-            // The server no longer accepts the saved cursor, so the feed restarts from the beginning. Nothing
-            // local is dropped: applyItem skips rows with pending edits and rows newer than the server copy.
-            db.transaction {
-                deleteState("$name.cursor")
-                deleteState("$name.watermark")
+            fullResync(name, fetch, updatedAtOf, idOf, applyItem, deleteMissing)
+        }
+    }
+
+    private suspend fun <T> fullResync(
+        name: String,
+        fetch: suspend (updatedSince: Instant?, cursor: String?) -> ChangePage<T>,
+        updatedAtOf: (T) -> Instant,
+        idOf: (T) -> Long,
+        applyItem: (T) -> Unit,
+        deleteMissing: (Set<Long>) -> Unit,
+    ) {
+        db.transaction {
+            deleteState("$name.cursor")
+            deleteState("$name.watermark")
+            setState("$name.reconcile", "1")
+        }
+        val received = HashSet<Long>()
+        pullPages(name, fetch, updatedAtOf) { item ->
+            received += idOf(item)
+            applyItem(item)
+        }
+        db.transaction {
+            deleteMissing(received)
+            deleteState("$name.reconcile")
+        }
+    }
+
+    /** Synced expenses the server no longer has (for example, a purged tombstone). Pending edits are kept. */
+    private fun deleteExpensesMissingFromServer(received: Set<Long>) {
+        for (row in queries.selectSyncedExpenseServerIds().executeAsList()) {
+            val serverId = row.server_id ?: continue
+            if (serverId !in received && !hasPending(OutboxEntity.EXPENSE, row.id)) {
+                queries.deleteExpenseById(row.id)
             }
-            pullPages(name, fetch, updatedAtOf, applyItem)
+        }
+    }
+
+    /**
+     * Synced categories the server no longer has. Pending edits are kept. Expenses that still point at a
+     * removed category lose the reference, otherwise they would wait for a category that can never sync.
+     */
+    private fun deleteCategoriesMissingFromServer(received: Set<Long>) {
+        for (row in queries.selectSyncedCategoryServerIds().executeAsList()) {
+            val serverId = row.server_id ?: continue
+            if (serverId !in received && !hasPending(OutboxEntity.CATEGORY, row.id)) {
+                queries.clearExpenseCategory(clientId = row.id, serverId = serverId)
+                queries.deleteCategoryById(row.id)
+            }
         }
     }
 

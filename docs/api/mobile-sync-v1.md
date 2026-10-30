@@ -336,8 +336,16 @@ retention window would otherwise keep rows the server has forgotten. This is a p
   - Other `4xx` (for example `400`, `403`, `404`, or an unadopted `409` on update): mark the row failed and expose it
     to the UI. A failed row does not block other rows. A local edit to the same record, or an explicit retry, requeues it.
 - Stale cursors: a changes request answered with `410` means the saved cursor or watermark for that feed is no longer
-  valid. The client drops both for that feed and restarts it from the beginning once. A second `410` in the same pass
-  is an error. The server does not emit `410` today (see Tombstone retention), so this path is covered by a client test.
+  valid. The client drops both for that feed and restarts it from the beginning once (a full resync). A second `410`
+  in the same pass is an error. The server does not emit `410` today (see Tombstone retention), so this path is
+  covered by client tests.
+  - After a full resync has received the whole feed, the client deletes local rows that have a server id but were not
+    returned. This is how a purged tombstone disappears from a device that missed it. Rows with a pending outbox
+    entry (waiting, retrying, or failed) and rows that were never synced are never deleted. Deleting a category also
+    clears it from any expense that still references it.
+  - If the full resync fails partway, nothing is deleted. The client keeps a `<feed>.reconcile` marker, and the next
+    sync starts the full resync again from the beginning rather than resuming the saved cursor.
+  - An ordinary incremental sync never deletes rows.
 - `updatedAt` is always set by the server. Clients should not send it.
 - `createdAt` is nullable.
 - An expense's `currency` can differ from the user's profile currency. Show it next to the amount.

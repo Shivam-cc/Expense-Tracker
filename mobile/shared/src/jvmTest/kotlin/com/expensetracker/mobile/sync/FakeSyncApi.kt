@@ -31,7 +31,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
     /** Thrown for any changes request that carries a cursor, to simulate a network failure mid-pull. */
     var failPagesWith: Throwable? = null
 
-    /** Rejects the next N cursored changes requests with 410, as a server does for an expired cursor. */
+    /** Rejects the next N changes requests that carry a cursor or updatedSince with 410, as for an expired cursor. */
     var staleCursorRejections: Int = 0
     var expenseWriteError: ApiException? = null
     var categoryWriteError: ApiException? = null
@@ -91,7 +91,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
 
     override suspend fun getExpenseChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<ExpenseDto> {
         if (cursor != null) failPagesWith?.let { throw it }
-        rejectStaleCursor(cursor)
+        rejectStaleCursor(updatedSince, cursor)
         return changesPage(expenses.values, { it.updatedAt }, { it.id }, updatedSince, cursor, limit)
     }
 
@@ -147,7 +147,7 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
 
     override suspend fun getCategoryChanges(updatedSince: Instant?, cursor: String?, limit: Int): ChangePage<CategoryDto> {
         if (cursor != null) failPagesWith?.let { throw it }
-        rejectStaleCursor(cursor)
+        rejectStaleCursor(updatedSince, cursor)
         return changesPage(categories.values, { it.updatedAt }, { it.id }, updatedSince, cursor, limit)
     }
 
@@ -185,8 +185,9 @@ class FakeSyncApi(private val clock: Clock) : ExpenseFlowApi {
         }
     }
 
-    private fun rejectStaleCursor(cursor: String?) {
-        if (cursor != null && staleCursorRejections > 0) {
+    /** A server answers 410 for a cursor or an updatedSince that is older than its retention horizon. */
+    private fun rejectStaleCursor(updatedSince: Instant?, cursor: String?) {
+        if ((cursor != null || updatedSince != null) && staleCursorRejections > 0) {
             staleCursorRejections--
             throw ApiException(410, "Cursor expired")
         }
