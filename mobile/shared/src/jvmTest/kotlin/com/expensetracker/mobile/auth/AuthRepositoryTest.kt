@@ -12,6 +12,8 @@ import com.expensetracker.mobile.api.ExpenseWriteDto
 import com.expensetracker.mobile.api.RefreshRequestDto
 import com.expensetracker.mobile.api.RegisterRequestDto
 import com.expensetracker.mobile.api.SendOtpRequestDto
+import com.expensetracker.mobile.data.LocalDataWiper
+import com.expensetracker.mobile.sync.SyncTestHarness
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -19,6 +21,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -103,11 +106,11 @@ private class FakeAuthApi : ExpenseFlowApi {
     }
 }
 
-private class Fixture {
+private class Fixture(private val onWipe: () -> Unit = {}) {
     val api = FakeAuthApi()
     val store = TokenStore()
     val clock = FakeClock(START)
-    val repo = AuthRepository(api, store, clock, refreshSkew = 60.seconds)
+    val repo = AuthRepository(api, store, clock, wipeLocalData = onWipe, refreshSkew = 60.seconds)
 
     suspend fun signIn(access: String = "access-1", refresh: String = "refresh-1") {
         api.loginResponse = authResponse(access, refresh)
@@ -184,14 +187,36 @@ class AuthRepositoryTest {
 
     @Test
     fun rejectedRefreshClearsSessionAndReturnsFalse() = runTest {
-        for (status in listOf(400, 401, 403)) {
-            val f = Fixture()
+        for (status in listOf(400, 401, 403, 404)) {
+            var wipes = 0
+            val f = Fixture(onWipe = { wipes++ })
             f.signIn()
             f.api.refreshHandler = { throw ApiException(status, "Refresh token revoked") }
 
             assertFalse(f.repo.refreshAfterUnauthorized(), "status $status")
             assertNull(f.store.load(), "status $status")
+            assertEquals(1, wipes, "status $status")
         }
+    }
+
+    @Test
+    fun deletedAccountRefreshWipesLocalDataOutboxAndTokens() = runTest {
+        val h = SyncTestHarness()
+        val f = Fixture(onWipe = { LocalDataWiper(h.db).wipe() })
+        val categoryId = h.categories.add("Food")
+        h.expenses.add("Dinner", "30.00", "INR", LocalDate.parse("2026-01-01"), categoryClientId = categoryId)
+        h.db.expenseFlowQueries.upsertSyncState("expense.cursor", "2")
+        f.signIn()
+        assertTrue(h.outboxCount() > 0)
+        f.api.refreshHandler = { throw ApiException(404, "Account not found") }
+
+        assertFalse(f.repo.refreshAfterUnauthorized())
+
+        assertNull(f.store.load())
+        assertEquals(0L, h.outboxCount())
+        assertTrue(h.db.expenseFlowQueries.selectActiveExpenses().executeAsList().isEmpty())
+        assertTrue(h.db.expenseFlowQueries.selectActiveCategories().executeAsList().isEmpty())
+        assertNull(h.db.expenseFlowQueries.selectSyncState("expense.cursor").executeAsOneOrNull())
     }
 
     @Test

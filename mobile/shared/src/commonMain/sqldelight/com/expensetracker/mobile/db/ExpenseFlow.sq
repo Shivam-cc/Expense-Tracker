@@ -134,3 +134,15 @@ INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?);
 
 deleteSyncState:
 DELETE FROM sync_state WHERE key = :key;
+
+deleteAllOutbox:
+DELETE FROM outbox;
+
+deleteAllExpenses:
+DELETE FROM expense;
+
+deleteAllCategories:
+DELETE FROM category;
+
+deleteAllSyncState:
+DELETE FROM sync_state;

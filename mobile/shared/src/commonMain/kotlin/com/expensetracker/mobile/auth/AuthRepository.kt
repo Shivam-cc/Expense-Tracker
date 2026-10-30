@@ -15,13 +15,17 @@ import kotlinx.datetime.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/** Backend statuses for a refresh token that is invalid, expired, or revoked. The session must be cleared. */
-private val INVALID_REFRESH_STATUSES = setOf(400, 401, 403)
+/**
+ * Refresh statuses meaning the session is no longer valid: the token is invalid, expired, revoked, or the
+ * account no longer exists (404). Local tokens and synced data are wiped in these cases.
+ */
+private val INVALID_REFRESH_STATUSES = setOf(400, 401, 403, 404)
 
 class AuthRepository(
     private val api: ExpenseFlowApi,
     private val store: TokenStore,
     private val clock: Clock = Clock.System,
+    private val wipeLocalData: () -> Unit,
     private val refreshSkew: Duration = 60.seconds,
 ) : AccessTokenProvider {
     private val refreshMutex = Mutex()
@@ -66,7 +70,7 @@ class AuthRepository(
 
     /**
      * Refreshes unless another caller already rotated the token that [staleAccessToken] belongs to.
-     * Returns false only when the refresh token was rejected, in which case the session has been cleared.
+     * Returns false only when the session was rejected, in which case tokens and local data have been wiped.
      */
     private suspend fun refreshIfStillStale(staleAccessToken: String): Boolean = refreshMutex.withLock {
         val current = store.load() ?: return@withLock false
@@ -77,6 +81,7 @@ class AuthRepository(
         } catch (e: ApiException) {
             if (e.status !in INVALID_REFRESH_STATUSES) throw e
             store.clear()
+            wipeLocalData()
             false
         }
     }
