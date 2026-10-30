@@ -354,10 +354,14 @@ retention window would otherwise keep rows the server has forgotten. This is a p
     revoked, gets `account_deleted`. After that, the client gets a generic `401` and treats it as an ordinary expiry.
     The hourly cleanup of expired tokens never touches these rows. MongoDB runs the TTL monitor about once a minute,
     so a row may outlive its deadline by that long.
-- Sign-out (`SessionController.signOut`) first attempts a sync. If unsynced writes remain, it returns the count and
-  changes nothing, so the UI can warn the user. The caller then confirms and calls again with `discardUnsynced`.
-  Confirming wipes the local database, outbox, and tokens. Signing in as a different user runs the same flow first.
-  Signing in as the same user keeps local data.
+- Sign-out (`SessionController.signOut`) first attempts a sync. If more unsynced writes remain than the caller agreed
+  to discard, it returns the current count and changes nothing, so the UI can warn the user. The caller then confirms
+  by calling again with `discardUnsynced = <the count the user saw>`. The count and the wipe run under the sync lock
+  and in one database transaction. If a write landed after the prompt, the count is higher than the confirmed one, so
+  nothing is wiped and the new count is returned for the UI to ask again. A count that dropped (for example because a
+  sync succeeded) signs out. Signing out clears the local database, outbox, and tokens, then revokes the refresh token
+  on the server as a best-effort step that never blocks or undoes the local wipe. Signing in as a different user runs
+  the same flow first, with the same `discardUnsynced` count. Signing in as the same user keeps local data.
 
 
 ## Verification

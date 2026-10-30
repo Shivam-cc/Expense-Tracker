@@ -85,12 +85,97 @@ class SessionControllerTest {
         f.h.api.expenseWriteError = ApiException(500, "server down")
         f.h.expenses.add("Coffee", "3.50", "INR", DAY)
 
-        assertIs<SignOutResult.SignedOut>(f.session.signOut(discardUnsynced = true))
+        assertIs<SignOutResult.SignedOut>(f.session.signOut(discardUnsynced = 1L))
 
         assertNull(f.auth.currentSession())
         assertEquals(0L, f.h.outboxCount())
         assertTrue(f.activeExpenseDescriptions().isEmpty())
         assertEquals(1, f.authApi.logoutCalls)
+    }
+
+    @Test
+    fun writeLandingBetweenPromptAndConfirmIsNotDiscardedUnseen() = runTest {
+        val f = Fixture()
+        f.session.signIn("asha@example.com", "pw")
+        f.h.api.expenseWriteError = ApiException(500, "server down")
+        f.h.expenses.add("Coffee", "3.50", "INR", DAY)
+        val prompted = assertIs<SignOutResult.UnsyncedRemaining>(f.session.signOut())
+        assertEquals(1L, prompted.count)
+
+        // The user is looking at "discard 1 change?" while another write arrives.
+        f.h.expenses.add("Tea", "2.00", "INR", DAY)
+        val reprompt = f.session.signOut(discardUnsynced = prompted.count)
+
+        assertEquals(2L, assertIs<SignOutResult.UnsyncedRemaining>(reprompt).count)
+        assertNotNull(f.auth.currentSession(), "nothing may be wiped until the user confirms the new count")
+        assertEquals(2L, f.h.outboxCount())
+        assertEquals(listOf("Coffee", "Tea"), f.activeExpenseDescriptions().sorted())
+        assertEquals(0, f.authApi.logoutCalls)
+
+        assertIs<SignOutResult.SignedOut>(f.session.signOut(discardUnsynced = 2L))
+        assertNull(f.auth.currentSession())
+        assertEquals(0L, f.h.outboxCount())
+    }
+
+    @Test
+    fun writeDuringTheFinalSyncIsCountedInsteadOfWiped() = runTest {
+        val f = Fixture()
+        f.session.signIn("asha@example.com", "pw")
+        f.h.expenses.add("Coffee", "3.50", "INR", DAY)
+        var injected = false
+        f.h.api.beforeExpenseWrite = {
+            if (!injected) {
+                injected = true
+                f.h.expenses.add("Tea", "2.00", "INR", DAY)
+            }
+        }
+
+        val result = f.session.signOut()
+
+        assertEquals(1L, assertIs<SignOutResult.UnsyncedRemaining>(result).count)
+        assertNotNull(f.auth.currentSession())
+        assertTrue("Tea" in f.activeExpenseDescriptions())
+    }
+
+    @Test
+    fun confirmedCountHigherThanTheCurrentOneStillSignsOut() = runTest {
+        val f = Fixture()
+        f.session.signIn("asha@example.com", "pw")
+        f.h.expenses.add("Coffee", "3.50", "INR", DAY)
+
+        // The final sync pushes the one expense, so fewer changes remain than the user confirmed.
+        assertIs<SignOutResult.SignedOut>(f.session.signOut(discardUnsynced = 3L))
+        assertNull(f.auth.currentSession())
+    }
+
+    @Test
+    fun userSwitchAsksAgainWhenAWriteLandsAfterTheConfirmation() = runTest {
+        val f = Fixture()
+        f.session.signIn("asha@example.com", "pw")
+        f.h.api.expenseWriteError = ApiException(500, "server down")
+        f.h.expenses.add("Coffee", "3.50", "INR", DAY)
+        assertEquals(1L, assertIs<SignInResult.UnsyncedRemaining>(f.session.signIn("ravi@example.com", "pw")).count)
+        f.h.expenses.add("Tea", "2.00", "INR", DAY)
+
+        val result = f.session.signIn("ravi@example.com", "pw", discardUnsynced = 1L)
+
+        assertEquals(2L, assertIs<SignInResult.UnsyncedRemaining>(result).count)
+        assertEquals("asha@example.com", assertNotNull(f.auth.currentSession()).email)
+        assertEquals(2, f.activeExpenseDescriptions().size)
+    }
+
+    @Test
+    fun wiperRefusesWhenMoreIsPendingThanAllowedAndWipesAtTheLimit() = runTest {
+        val h = SyncTestHarness()
+        h.expenses.add("Coffee", "3.50", "INR", DAY)
+        h.expenses.add("Tea", "2.00", "INR", DAY)
+        val wiper = LocalDataWiper(h.db)
+
+        assertEquals(2L, wiper.wipeUnlessUnsyncedExceeds(1L))
+        assertEquals(2L, h.outboxCount())
+        assertNull(wiper.wipeUnlessUnsyncedExceeds(2L))
+        assertEquals(0L, h.outboxCount())
+        assertTrue(h.db.expenseFlowQueries.selectActiveExpenses().executeAsList().isEmpty())
     }
 
     @Test

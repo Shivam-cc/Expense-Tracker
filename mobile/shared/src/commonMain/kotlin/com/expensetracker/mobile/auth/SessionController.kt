@@ -10,7 +10,7 @@ sealed interface SignInResult {
 
     /**
      * The previous user has unsynced changes on this device. Nothing was changed. Ask the user to
-     * confirm discarding them, then call again with discardUnsynced = true.
+     * confirm discarding [count] changes, then call again with discardUnsynced = [count].
      */
     data class UnsyncedRemaining(val count: Long) : SignInResult
 }
@@ -19,8 +19,9 @@ sealed interface SignOutResult {
     data object SignedOut : SignOutResult
 
     /**
-     * Unsynced changes remain after a sync attempt. Nothing was changed. Ask the user to confirm
-     * discarding them, then call again with discardUnsynced = true.
+     * More unsynced changes remain than the caller agreed to discard. Nothing was changed. Ask the user to
+     * confirm discarding [count] changes, then call again with discardUnsynced = [count]. This is also returned
+     * when a write landed after an earlier confirmation, so the user is asked again.
      */
     data class UnsyncedRemaining(val count: Long) : SignOutResult
 }
@@ -38,7 +39,7 @@ class SessionController(
     private val queries = db.expenseFlowQueries
     private val wiper = LocalDataWiper(db)
 
-    suspend fun signIn(email: String, password: String, discardUnsynced: Boolean = false): SignInResult {
+    suspend fun signIn(email: String, password: String, discardUnsynced: Long? = null): SignInResult {
         prepareForUser(email, discardUnsynced)?.let { return SignInResult.UnsyncedRemaining(it) }
         val session = auth.login(email, password)
         setOwner(session.email)
@@ -50,7 +51,7 @@ class SessionController(
         email: String,
         password: String,
         otp: String,
-        discardUnsynced: Boolean = false,
+        discardUnsynced: Long? = null,
     ): SignInResult {
         prepareForUser(email, discardUnsynced)?.let { return SignInResult.UnsyncedRemaining(it) }
         val session = auth.register(name, email, password, otp)
@@ -58,7 +59,13 @@ class SessionController(
         return SignInResult.SignedIn(session)
     }
 
-    suspend fun signOut(discardUnsynced: Boolean = false): SignOutResult {
+    /**
+     * Attempts a final sync, then signs out. [discardUnsynced] is the number of unsynced changes the user
+     * agreed to discard (null means none). The count and the wipe happen under the sync lock and in one database
+     * transaction, so if more changes are pending than were confirmed, nothing is wiped and the current count is
+     * returned for the UI to ask again.
+     */
+    suspend fun signOut(discardUnsynced: Long? = null): SignOutResult {
         if (auth.currentSession() != null) {
             try {
                 engine.sync()
@@ -68,20 +75,22 @@ class SessionController(
                 // Anything still queued is counted below and offered to the user.
             }
         }
-        val remaining = engine.unsyncedCount()
-        if (remaining > 0 && !discardUnsynced) return SignOutResult.UnsyncedRemaining(remaining)
-        engine.runExclusive {
-            auth.logout()
-            wiper.wipe()
+        return engine.runExclusive {
+            val pending = wiper.wipeUnlessUnsyncedExceeds(discardUnsynced ?: 0L)
+            if (pending != null) {
+                SignOutResult.UnsyncedRemaining(pending)
+            } else {
+                auth.logout()
+                SignOutResult.SignedOut
+            }
         }
-        return SignOutResult.SignedOut
     }
 
     /**
      * Clears the previous user's data when [email] is a different account. Returns the unsynced count
      * when that data cannot be discarded yet, or null when the device is free for [email].
      */
-    private suspend fun prepareForUser(email: String, discardUnsynced: Boolean): Long? {
+    private suspend fun prepareForUser(email: String, discardUnsynced: Long?): Long? {
         val owner = queries.selectSyncState(OWNER_KEY).executeAsOneOrNull() ?: return null
         if (owner.equals(email, ignoreCase = true)) return null
         return when (val result = signOut(discardUnsynced)) {

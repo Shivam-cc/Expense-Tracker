@@ -58,18 +58,26 @@ class AuthRepository(
     }
 
     /**
-     * Clears the local session even when the server call fails. Server-side revocation is best effort.
+     * Clears the local session first, so tokens are never left behind, then revokes the refresh token on the
+     * server. Revocation is best effort: any failure, including a timeout while offline, is ignored.
      */
     suspend fun logout() {
-        try {
-            store.load()?.let { api.logout(RefreshRequestDto(it.refreshToken)) }
+        val session = try {
+            store.load()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Ignored on purpose: the local session is cleared in finally.
-        } finally {
-            // Runs even if the caller was cancelled, so tokens are never left behind.
-            withContext(NonCancellable) { store.clear() }
+            null
+        }
+        // Runs even if the caller was cancelled.
+        withContext(NonCancellable) { store.clear() }
+        if (session == null) return
+        try {
+            api.logout(RefreshRequestDto(session.refreshToken))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Ignored on purpose: the local session is already gone.
         }
     }
 
