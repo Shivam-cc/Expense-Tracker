@@ -42,7 +42,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jacoco-report
           path: backend/target/site/jacoco
@@ -50,7 +50,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports
           path: backend/target/surefire-reports
@@ -74,7 +74,7 @@ jobs:
         run: ./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest :androidApp:build :androidApp:assembleDebug
       - name: Upload Android reports and APK
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-results
           path: |
@@ -107,7 +107,7 @@ jobs:
 
       - name: Upload iOS test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-test-reports
           path: mobile/shared/build/test-results
