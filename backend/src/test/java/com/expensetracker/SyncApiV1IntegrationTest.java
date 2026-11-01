@@ -14,7 +14,9 @@ import org.springframework.data.mongodb.core.query.Update;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,9 +30,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 class SyncApiV1IntegrationTest extends IntegrationTestBase {
 
-    private static final Instant T1 = Instant.parse("2026-10-29T10:00:00Z");
-    private static final Instant T2 = Instant.parse("2026-10-29T10:00:01Z");
-    private static final Instant T3 = Instant.parse("2026-10-29T10:00:02Z");
+    // Recent enough that updatedSince stays inside the tombstone retention window.
+    private static final Instant T1 = Instant.now().truncatedTo(ChronoUnit.SECONDS).minus(Duration.ofDays(1));
+    private static final Instant T2 = T1.plusSeconds(1);
+    private static final Instant T3 = T1.plusSeconds(2);
 
     @Autowired
     private MongoTemplate mongoTemplate;
@@ -313,6 +316,31 @@ class SyncApiV1IntegrationTest extends IntegrationTestBase {
         getJson("/api/v1/expenses/changes?limit=501", alice, 400);
         getJson("/api/v1/expenses/changes?updatedSince=yesterday", alice, 400);
         getJson("/api/v1/expenses/changes?cursor=not-a-cursor", alice, 400);
+    }
+
+    @Test
+    void updatedSinceOlderThanTheRetentionPeriodReturns410AndRecentReturns200() throws Exception {
+        JsonNode alice = register(uniqueEmail(), PASSWORD);
+        Instant stale = Instant.now().minus(Duration.ofDays(91));
+        Instant recent = Instant.now().minus(Duration.ofDays(89));
+
+        for (String feed : List.of("/api/v1/expenses/changes", "/api/v1/categories/changes")) {
+            JsonNode gone = getJson(feed + "?updatedSince=" + stale, alice, 410);
+            assertThat(gone.get("status").asInt()).isEqualTo(410);
+            getJson(feed + "?updatedSince=" + recent, alice, 200);
+        }
+    }
+
+    @Test
+    void cursorPositionedBeforeTheRetentionHorizonStillPages() throws Exception {
+        JsonNode alice = register(uniqueEmail(), PASSWORD);
+        Instant old = Instant.now().minus(Duration.ofDays(400));
+        long first = createV1Expense(alice, "old 1", null).get("id").asLong();
+        long second = createV1Expense(alice, "old 2", null).get("id").asLong();
+        setUpdatedAt(Expense.class, first, old);
+        setUpdatedAt(Expense.class, second, old.plusSeconds(1));
+
+        assertThat(ids(collectFeed("/api/v1/expenses/changes", alice, 1))).containsExactly(first, second);
     }
 
     @Test

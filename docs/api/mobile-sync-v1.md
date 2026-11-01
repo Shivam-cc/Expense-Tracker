@@ -45,6 +45,7 @@ Validation failures (400) add an `errors` object that maps each field to a messa
 | 403 | Attempt to change a global (built-in) category with PUT or DELETE. |
 | 404 | Record does not exist, belongs to another user, or is a tombstone (for PUT), or a referenced category is missing, another user's, or deleted. |
 | 409 | Category name matches a built-in category (case-insensitive). The body includes `existingCategory` (the built-in `CategoryV1`). Clients adopt it instead of retrying. See Notes for clients. |
+| 410 | Changes feed only: `updatedSince` is older than the tombstone retention period. Clients do a full resync. See Tombstone retention. |
 
 ## Data model
 
@@ -173,7 +174,7 @@ Query parameters:
 
 | Name | Required | Default | Behavior |
 |---|---|---|---|
-| `updatedSince` | no | none | Returns rows with `updatedAt >= updatedSince`. The comparison is inclusive. Omitted means start from the beginning. |
+| `updatedSince` | no | none | Returns rows with `updatedAt >= updatedSince`. The comparison is inclusive. Omitted means start from the beginning. Older than the tombstone retention period returns 410. |
 | `cursor` | no | none | Opaque value from a previous `nextCursor`. When present, `updatedSince` is ignored. |
 | `limit` | no | 200 | Integer 1..500. Anything else returns 400. |
 
@@ -322,19 +323,20 @@ prompt for an update when the installed version is lower.
 - **Last write wins.** PUT replaces the fields and sets `updatedAt` to the server time. The server does not merge.
 - **Global categories.** These have no owner and `clientId` is null. They are read-only, and PUT/DELETE return 403.
 
-### Tombstone retention (proposed, not implemented)
+### Tombstone retention
 
-Tombstones cannot be purged while a client might still depend on them. A client that was offline longer than the
-retention window would otherwise keep rows the server has forgotten. This is a proposal for review. No purge job exists.
+Tombstones are not kept forever. A daily job (03:30 UTC) hard-deletes expense and category tombstones whose
+`deletedAt` is older than the retention period, `expenseflow.tombstone.retention-days` (default 90). Live rows are
+never purged.
 
-- **Window.** Keep a tombstone for 180 days after `deletedAt`. After that, it may be hard-deleted.
-- **Stale cursors.** A changes request whose `updatedSince` is older than the retention horizon (now minus 180 days)
-  returns `410 Gone`. Clients must then discard local data for that account and do a full sync from no parameters.
-  Local outbox writes must be pushed first.
-- **Full syncs** (no `updatedSince` or `cursor`) are not affected. They never need tombstones older than the window
-  because the server already omits them.
-- **Implementation order when approved:** add the scheduled purge, then the `410` check in the changes endpoints, and
-  add a test for each. Until then, tombstones are kept indefinitely, which is safe but grows storage.
+- **Horizon.** The retention horizon is now minus the retention period.
+- **Stale `updatedSince`.** A changes request whose `updatedSince` is before the horizon returns `410 Gone`, because
+  tombstones it would need may already be purged. This covers clients offline longer than the retention period. They
+  must do a full resync: drop the saved cursor and watermark, call the feed with no parameters, and page to the end.
+- **Cursors are not checked.** A cursor marks a row's position in the feed, not when the client last synced. A full
+  sync of old data carries cursors from before the horizon, so a cursor never triggers `410`.
+- **Full syncs** (no `updatedSince` or `cursor`) are not affected. They never need purged tombstones: the server returns
+  every row it still has, and the client deletes synced local rows that were not returned (see Notes for clients).
 
 ## Notes for clients
 
@@ -352,8 +354,8 @@ retention window would otherwise keep rows the server has forgotten. This is a p
     to the UI. A failed row does not block other rows. A local edit to the same record, or an explicit retry, requeues it.
 - Stale cursors: a changes request answered with `410` means the saved cursor or watermark for that feed is no longer
   valid. The client drops both for that feed and restarts it from the beginning once (a full resync). A second `410`
-  in the same pass is an error. The server does not emit `410` today (see Tombstone retention), so this path is
-  covered by client tests.
+  in the same pass is an error. The server sends `410` when `updatedSince` is older than the retention period, which
+  is how a client offline longer than that period is sent to a full resync (see Tombstone retention).
   - After a full resync has received the whole feed, the client deletes local rows that have a server id but were not
     returned. This is how a purged tombstone disappears from a device that missed it. Rows with a pending outbox
     entry (waiting, retrying, or failed) and rows that were never synced are never deleted. Deleting a category also

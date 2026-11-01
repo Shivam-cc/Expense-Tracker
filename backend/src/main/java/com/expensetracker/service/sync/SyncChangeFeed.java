@@ -2,6 +2,7 @@ package com.expensetracker.service.sync;
 
 import com.expensetracker.dto.v1.ChangesV1Response;
 import com.expensetracker.exception.BadRequestException;
+import com.expensetracker.exception.GoneException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -25,6 +26,7 @@ public class SyncChangeFeed {
     static final int MAX_LIMIT = 500;
 
     private final MongoTemplate mongoTemplate;
+    private final TombstonePurgeJob tombstonePurgeJob;
 
     public <E, T> ChangesV1Response<T> fetch(
             Class<E> type,
@@ -39,7 +41,7 @@ public class SyncChangeFeed {
         }
 
         Instant serverTime = SyncTime.now();
-        Query query = new Query(criteria(scope, updatedSince, cursor))
+        Query query = new Query(criteria(scope, updatedSince, cursor, tombstonePurgeJob.horizon()))
                 .with(Sort.by(Sort.Direction.ASC, "updatedAt", "id"))
                 .limit(limit + 1);
 
@@ -57,7 +59,8 @@ public class SyncChangeFeed {
                 serverTime);
     }
 
-    private static Criteria criteria(Criteria scope, String updatedSince, String cursor) {
+    /** An updatedSince before {@code horizon} may skip purged tombstones, so it is rejected with 410. */
+    private static Criteria criteria(Criteria scope, String updatedSince, String cursor, Instant horizon) {
         if (cursor != null && !cursor.isBlank()) {
             SyncCursorCodec.Position position = SyncCursorCodec.decode(cursor);
             Criteria after = new Criteria().orOperator(
@@ -69,6 +72,9 @@ public class SyncChangeFeed {
         }
         if (updatedSince != null && !updatedSince.isBlank()) {
             Instant since = SyncTime.parse(updatedSince, "updatedSince");
+            if (since.isBefore(horizon)) {
+                throw new GoneException("updatedSince is older than the tombstone retention period; do a full resync");
+            }
             return new Criteria().andOperator(scope, Criteria.where("updatedAt").gte(since));
         }
         return scope;
