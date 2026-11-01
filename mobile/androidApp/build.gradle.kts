@@ -1,4 +1,5 @@
 import java.net.URI
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -16,6 +17,23 @@ if (releaseApiUrl != null) {
     }
 }
 
+// Release signing: keystore.properties (mobile/) first, then CI env vars. Skipped if neither is present.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.isFile) keystorePropsFile.inputStream().use { load(it) }
+}
+fun signingValue(propKey: String, envKey: String): String? =
+    keystoreProps.getProperty(propKey)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(envKey)?.takeIf { it.isNotBlank() }
+
+val signingStoreFile = signingValue("storeFile", "KEYSTORE_FILE")
+val signingStorePassword = signingValue("storePassword", "KEYSTORE_PASSWORD")
+val signingKeyAlias = signingValue("keyAlias", "KEY_ALIAS")
+val signingKeyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword
+).all { it != null }
+
 android {
     namespace = "com.expensetracker.android"
     compileSdk = 35
@@ -31,9 +49,22 @@ android {
         compose = true
         buildConfig = true
     }
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = rootProject.file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
     buildTypes {
         debug { buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"") }
-        release { buildConfigField("String", "API_BASE_URL", "\"${releaseApiUrl.orEmpty()}\"") }
+        release {
+            buildConfigField("String", "API_BASE_URL", "\"${releaseApiUrl.orEmpty()}\"")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true

@@ -14,6 +14,9 @@ mobile/.kotlin/
 # Mobile local config (Android SDK path)
 mobile/local.properties
 
+# Android release signing secrets
+mobile/keystore.properties
+
 # IDE
 .idea/
 *.iml
