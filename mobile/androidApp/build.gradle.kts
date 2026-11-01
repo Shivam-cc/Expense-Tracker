@@ -6,11 +6,14 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
-val releaseApiUrl = providers.gradleProperty("expenseflow.apiUrl").orElse("https://localhost").get()
-val releaseUri = URI(releaseApiUrl)
-require(releaseUri.scheme == "https" && !releaseUri.host.isNullOrBlank() &&
-    releaseUri.rawUserInfo == null && releaseUri.rawQuery == null && releaseUri.rawFragment == null) {
-    "Release expenseflow.apiUrl must be an HTTPS URL without credentials, query or fragment"
+val releaseApiUrlProvider = providers.gradleProperty("expenseflow.apiUrl")
+val releaseApiUrl = releaseApiUrlProvider.orNull
+if (releaseApiUrl != null) {
+    val releaseUri = URI(releaseApiUrl)
+    require(releaseUri.scheme == "https" && !releaseUri.host.isNullOrBlank() &&
+        releaseUri.rawUserInfo == null && releaseUri.rawQuery == null && releaseUri.rawFragment == null) {
+        "Release expenseflow.apiUrl must be an HTTPS URL without credentials, query or fragment"
+    }
 }
 
 android {
@@ -29,8 +32,8 @@ android {
         buildConfig = true
     }
     buildTypes {
-        debug { buildConfigField("String", "API_URL", "\"http://10.0.2.2:8080\"") }
-        release { buildConfigField("String", "API_URL", "\"$releaseApiUrl\"") }
+        debug { buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"") }
+        release { buildConfigField("String", "API_BASE_URL", "\"${releaseApiUrl.orEmpty()}\"") }
     }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -38,6 +41,22 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+}
+
+val checkReleaseApiUrl = tasks.register("checkReleaseApiUrl") {
+    doLast {
+        if (releaseApiUrlProvider.orNull.isNullOrBlank()) {
+            error(
+                "Release build requires Gradle property \"expenseflow.apiUrl\". " +
+                    "Set it to the API base URL, for example -Pexpenseflow.apiUrl=https://api.example.com"
+            )
+        }
+    }
+}
+tasks.configureEach {
+    if (name.contains("Release") && name != "checkReleaseApiUrl") {
+        dependsOn(checkReleaseApiUrl)
+    }
 }
 
 dependencies {

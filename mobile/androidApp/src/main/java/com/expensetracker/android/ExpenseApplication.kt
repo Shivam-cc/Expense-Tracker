@@ -42,7 +42,7 @@ class AppGraph {
         override suspend fun currentAccessToken() = auth.currentAccessToken()
         override suspend fun refreshAfterUnauthorized() = auth.refreshAfterUnauthorized()
     }
-    val api = KtorExpenseFlowApi(BuildConfig.API_URL, OkHttp.create(), tokens)
+    val api = KtorExpenseFlowApi(BuildConfig.API_BASE_URL, OkHttp.create(), tokens)
     val auth: AuthRepository = AuthRepository(api, TokenStore(), wipeLocalData = {
         LocalDataWiper(db).wipe()
         session.value = null
