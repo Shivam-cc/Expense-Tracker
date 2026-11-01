@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { userApi } from '../services/api'
 import { PASSWORD_HINT, validatePassword } from '../utils/password'
-import { LogOut, Trash2, X } from 'lucide-react'
+import { ArrowLeft, LogOut, Trash2, X } from 'lucide-react'
 import Tabs from '../components/ui/Tabs'
 
 const inputCls =
@@ -271,6 +271,12 @@ export default function SettingsPage() {
 
   return (
     <>
+      <Link
+        to="/dashboard"
+        className="inline-flex items-center gap-1 mb-3 -ml-1 px-1 py-0.5 rounded text-sm font-medium text-gray-600 hover:text-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      >
+        <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to dashboard
+      </Link>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500">Manage your profile, password, sessions and account.</p>
