@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Wallet body -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M34,38 L74,38 A4,4 0 0 1 78,42 L78,70 A4,4 0 0 1 74,74 L34,74 A4,4 0 0 1 30,70 L30,42 A4,4 0 0 1 34,38 Z" />
+    <!-- Flap / strap cut-out -->
+    <path android:fillColor="#2563EB"
+        android:pathData="M62,50 L80,50 L80,62 L62,62 A6,6 0 0 1 62,50 Z" />
+    <!-- Clasp -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M64,53 A3,3 0 1 0 64,59 A3,3 0 1 0 64,53 Z" />
+    <!-- Top edge accent -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M36,32 L66,32 L66,35 L36,35 Z" />
+</vector>
