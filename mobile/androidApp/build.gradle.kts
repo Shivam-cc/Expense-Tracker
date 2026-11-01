@@ -63,6 +63,12 @@ android {
         debug { buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"") }
         release {
             buildConfigField("String", "API_BASE_URL", "\"${releaseApiUrl.orEmpty()}\"")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
