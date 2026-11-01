@@ -295,6 +295,21 @@ Soft delete of a category owned by the caller.
 - `403` for a global category. These are read-only, matching the existing `DELETE /api/categories/{id}`.
 - `404` when the category does not exist or belongs to another user.
 
+## App
+
+### GET /api/v1/app/min-version
+
+Returns the lowest app version the server supports on each platform. Clients call it at startup, before sign-in, and
+prompt for an update when the installed version is lower.
+
+- Public. No `Authorization` header is needed, and a stale token is ignored.
+- Counts against the general per-IP rate limit, like every other non-auth endpoint (`429` when exceeded).
+- Values come from `expenseflow.min-version.android` and `expenseflow.min-version.ios`. Both default to `1.0.0`.
+
+```json
+{ "android": "1.0.0", "ios": "1.0.0" }
+```
+
 ## Tombstones and idempotency rules
 
 - **Tombstones.** A soft-deleted expense or category keeps its `id`, `clientId`, and other fields, and gets `deletedAt`
