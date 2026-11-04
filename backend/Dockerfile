@@ -1,9 +1,11 @@
+# Build context is the repo root (Railway and docker-compose both build from there).
+
 # ── Stage 1: Build JAR ───────────────────────────────────────────────────────
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
-COPY pom.xml .
+COPY backend/pom.xml .
 RUN mvn dependency:go-offline -B
-COPY src ./src
+COPY backend/src ./src
 RUN mvn clean package -DskipTests -B
 
 # ── Stage 2: Run ─────────────────────────────────────────────────────────────

@@ -1,0 +1,4 @@
+# Only the backend sources are needed to build the image; keep frontend, mobile, .git, etc. out of the context.
+*
+!backend/pom.xml
+!backend/src
