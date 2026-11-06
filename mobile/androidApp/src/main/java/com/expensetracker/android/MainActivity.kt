@@ -24,9 +24,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.expensetracker.mobile.data.*
 import com.expensetracker.mobile.sync.FailedOutboxItem
+import com.expensetracker.mobile.util.Money
 import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import kotlinx.datetime.todayIn
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,22 +93,38 @@ private fun SignedInScreen(vm: ExpenseViewModel, busy: Boolean, currency: String
     var editing by remember { mutableStateOf<ExpenseRecord?>(null) }
     var deleting by remember { mutableStateOf<ExpenseRecord?>(null) }
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
-    val formatted = last?.let {
-        DateTimeFormatter.ofPattern("MMM d, HH:mm:ss").withZone(ZoneId.systemDefault())
-            .format(java.time.Instant.ofEpochMilli(it.toEpochMilliseconds()))
-    } ?: "Never"
-    Text("Last synced: $formatted")
-    Text("Unsynced: $unsynced${if (syncing) " - Syncing..." else ""}")
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = vm::sync, enabled = !busy && !syncing) { Text("Sync now") }
-        TextButton(onClick = { vm.signOut() }, enabled = !busy) { Text("Sign out") }
-    }
-    ScrollableTabRow(selectedTabIndex = tab) {
-        listOf("Expenses", "Categories", "Failed (${failed.size})").forEachIndexed { index, title ->
-            Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
+    val total = monthTotalMinor(
+        expenses.map { SpendEntry(it.amountMinor, it.currency, it.date) },
+        currency, kotlinx.datetime.Clock.System.todayIn(kotlinx.datetime.TimeZone.currentSystemDefault()),
+    )
+    LaunchedEffect(failed.size) { if (failed.isEmpty() && tab == 2) tab = 0 }
+    val showFailed = failed.isNotEmpty()
+    val activeTab = if (tab == 2 && !showFailed) 0 else tab
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Spent this month", style = MaterialTheme.typography.labelLarge)
+            Text("${Money.formatMinor(total, Money.minorDigits(currency))} $currency", style = MaterialTheme.typography.headlineMedium)
         }
     }
-    when (tab) {
+    val syncLabel = when {
+        syncing -> "Syncing…"
+        unsynced > 0 -> "$unsynced pending"
+        last != null -> "Synced ${relativeTime(last!!.toEpochMilliseconds())}"
+        else -> "Not synced yet"
+    }
+    AssistChip(
+        onClick = vm::sync,
+        enabled = !busy && !syncing,
+        label = { Text(syncLabel, style = MaterialTheme.typography.labelMedium) },
+        modifier = Modifier.testTag("sync-status"),
+    )
+    ScrollableTabRow(selectedTabIndex = activeTab) {
+        val titles = buildList { add("Expenses"); add("Categories"); if (showFailed) add("Failed (${failed.size})") }
+        titles.forEachIndexed { index, title ->
+            Tab(selected = activeTab == index, onClick = { tab = index }, text = { Text(title) })
+        }
+    }
+    when (activeTab) {
         0 -> {
             Button(onClick = { editing = null; editorOpen = true }, enabled = !busy) { Text("Add expense") }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -243,5 +259,15 @@ private fun FailedScreen(vm: ExpenseViewModel, failed: List<FailedOutboxItem>, b
             text = { Text("The local change will be removed. Any existing server copy is restored on the next successful sync.") },
             confirmButton = { TextButton(onClick = { vm.discard(item); discard = null }) { Text("Discard") } },
             dismissButton = { TextButton(onClick = { discard = null }) { Text("Cancel") } })
+    }
+}
+
+private fun relativeTime(thenMs: Long): String {
+    val mins = (System.currentTimeMillis() - thenMs).coerceAtLeast(0) / 60_000
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "${mins}m ago"
+        mins < 1_440 -> "${mins / 60}h ago"
+        else -> "${mins / 1_440}d ago"
     }
 }
