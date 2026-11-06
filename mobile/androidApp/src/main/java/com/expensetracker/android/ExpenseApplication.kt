@@ -83,7 +83,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             throw e
         } catch (e: Exception) {
             Log.w("ExpenseFlow", "Background sync failed", e)
-            graph.message.value = e.message ?: "Background sync failed"
+            if (!isNetworkError(e)) graph.message.value = userMessage(e, "Background sync failed")
             if (graph.session.value == null) Result.failure() else Result.retry()
         }
     }

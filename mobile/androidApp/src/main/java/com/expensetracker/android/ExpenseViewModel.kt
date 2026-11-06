@@ -43,7 +43,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     private fun report(e: Exception) {
         Log.w("ExpenseFlow", "Operation failed", e)
         if (graph.message.value?.startsWith("Your account was deleted") != true) {
-            graph.message.value = e.message ?: "Operation failed"
+            graph.message.value = userMessage(e, "Operation failed")
         }
     }
 

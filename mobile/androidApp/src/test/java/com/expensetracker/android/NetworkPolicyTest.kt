@@ -9,9 +9,9 @@ class NetworkPolicyTest {
     @Test
     fun endpointMatchesTheBuildTypeAndOnlyTheEmulatorHostAllowsCleartext() {
         if (BuildConfig.DEBUG) {
-            assertEquals("http://10.0.2.2:8080", BuildConfig.API_URL)
+            assertEquals("http://10.0.2.2:8080", BuildConfig.API_BASE_URL)
         } else {
-            assertEquals("https", java.net.URI(BuildConfig.API_URL).scheme)
+            assertEquals("https", java.net.URI(BuildConfig.API_BASE_URL).scheme)
         }
         val xml = DocumentBuilderFactory.newInstance().newDocumentBuilder()
             .parse(File("src/debug/res/xml/network_security_config.xml"))
