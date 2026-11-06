@@ -28,6 +28,19 @@ class UserMessagesTest {
     }
 
     @Test
+    fun authNetworkErrorsUseTheConnectionMessage() {
+        val errors = listOf(UnknownHostException("host"), SocketTimeoutException(), IOException(), HttpRequestTimeoutException())
+        errors.forEach { assertEquals(AUTH_OFFLINE_MESSAGE, authMessage(it, "x")) }
+        assertEquals("No internet connection. Check your connection and try again.", AUTH_OFFLINE_MESSAGE)
+    }
+
+    @Test
+    fun authNonNetworkErrorsKeepTheirMessage() {
+        assertEquals("Invalid credentials", authMessage(IllegalStateException("Invalid credentials"), "x"))
+        assertEquals("fallback", authMessage(IllegalStateException(), "fallback"))
+    }
+
+    @Test
     fun otherErrorsKeepTheirMessage() {
         assertEquals("Bad input", userMessage(IllegalArgumentException("Bad input"), "x"))
         assertEquals("fallback", userMessage(IllegalStateException(), "fallback"))

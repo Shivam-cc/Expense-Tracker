@@ -36,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -74,6 +75,8 @@ internal fun AuthScreen(vm: ExpenseViewModel, busy: Boolean, modifier: Modifier 
     var password by remember { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var otp by remember { mutableStateOf("") }
+    val expenses by vm.expenses.collectAsStateWithLifecycle()
+    val unsynced by vm.unsynced.collectAsStateWithLifecycle()
     AuthForm(
         register = register,
         name = name,
@@ -91,6 +94,7 @@ internal fun AuthScreen(vm: ExpenseViewModel, busy: Boolean, modifier: Modifier 
         onSendOtp = { vm.sendOtp(name, email) },
         onSubmit = { vm.authenticate(Credentials(name, email, password, otp, register)) },
         modifier = modifier,
+        hasOfflineData = expenses.isNotEmpty() || unsynced > 0,
     )
 }
 
@@ -113,6 +117,7 @@ private fun AuthForm(
     onSendOtp: () -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
+    hasOfflineData: Boolean = false,
 ) {
     val scroll = rememberScrollState()
     val emailFocus = remember { FocusRequester() }
@@ -158,17 +163,20 @@ private fun AuthForm(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    if (register) {
-                        "Enter your details and the email code to open your account."
-                    } else {
-                        "Expired sessions keep your offline data. Sign in with the same account to continue syncing."
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    color = ExpenseFlowMuted,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                )
+                val subtitle = when {
+                    register -> "Enter your details and the email code to open your account."
+                    hasOfflineData -> "Expired sessions keep your offline data. Sign in with the same account to continue syncing."
+                    else -> null
+                }
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        color = ExpenseFlowMuted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 Spacer(Modifier.height(if (short) 20.dp else 32.dp))
                 if (register) {
                     AuthField(

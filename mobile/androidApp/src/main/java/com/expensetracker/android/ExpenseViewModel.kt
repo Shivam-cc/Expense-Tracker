@@ -40,14 +40,14 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun report(e: Exception) {
+    private fun report(e: Exception, auth: Boolean = false) {
         Log.w("ExpenseFlow", "Operation failed", e)
         if (graph.message.value?.startsWith("Your account was deleted") != true) {
-            graph.message.value = userMessage(e, "Operation failed")
+            graph.message.value = if (auth) authMessage(e, "Operation failed") else userMessage(e, "Operation failed")
         }
     }
 
-    private fun run(block: suspend () -> Unit) {
+    private fun run(auth: Boolean = false, block: suspend () -> Unit) {
         if (!busy.compareAndSet(false, true)) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -55,7 +55,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                report(e)
+                report(e, auth)
             } finally {
                 try {
                     graph.refreshSession()
@@ -70,13 +70,13 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun sendOtp(name: String, email: String) = run {
+    fun sendOtp(name: String, email: String) = run(auth = true) {
         require(name.isNotBlank() && email.isNotBlank()) { "Enter your name and email first" }
         graph.auth.sendOtp(name.trim(), email.trim())
         graph.message.value = "OTP sent. Check your email."
     }
 
-    fun authenticate(credentials: Credentials, confirmed: Long? = null) = run {
+    fun authenticate(credentials: Credentials, confirmed: Long? = null) = run(auth = true) {
         graph.gate.withLock {
             val result = if (credentials.register) {
                 graph.controller.register(credentials.name.trim(), credentials.email.trim(), credentials.password, credentials.otp, confirmed)

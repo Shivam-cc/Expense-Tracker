@@ -5,6 +5,8 @@ import java.nio.channels.UnresolvedAddressException
 
 const val OFFLINE_MESSAGE = "You're offline. Your changes are saved and will sync when you're back online."
 
+const val AUTH_OFFLINE_MESSAGE = "No internet connection. Check your connection and try again."
+
 private val KTOR_TIMEOUT_NAMES = setOf("HttpRequestTimeoutException", "ConnectTimeoutException", "SocketTimeoutException")
 
 /** True for connectivity failures: no host, refused connection, timeouts, or any other I/O error. */
@@ -23,3 +25,7 @@ fun isNetworkError(e: Throwable): Boolean {
 /** Text to show the user for [e]: a friendly offline message for network errors, otherwise the exception's own message. */
 fun userMessage(e: Throwable, fallback: String): String =
     if (isNetworkError(e)) OFFLINE_MESSAGE else e.message ?: fallback
+
+/** Like [userMessage], for sign-in, register and OTP, where nothing is saved locally while offline. */
+fun authMessage(e: Throwable, fallback: String): String =
+    if (isNetworkError(e)) AUTH_OFFLINE_MESSAGE else e.message ?: fallback
