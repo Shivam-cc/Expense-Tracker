@@ -1,8 +1,11 @@
 package com.expensetracker.android
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,10 +15,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,7 +31,11 @@ import java.time.format.DateTimeFormatter
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { ExpenseApp() } }
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.WHITE, Color.WHITE),
+        )
+        setContent { ExpenseFlowTheme { ExpenseApp() } }
     }
 }
 
@@ -46,15 +53,18 @@ private fun ExpenseApp(vm: ExpenseViewModel = viewModel()) {
             vm.graph.message.value = null
         }
     }
-    Scaffold(snackbarHost = { SnackbarHost(snack) }) { padding ->
-        Column(Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
-            Text("ExpenseFlow", style = MaterialTheme.typography.headlineMedium)
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (!ready) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snack) },
+    ) { padding ->
+        when {
+            !ready -> Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
-            } else if (session == null) {
-                AuthScreen(vm, busy)
-            } else {
+            }
+            session == null -> AuthScreen(vm, busy, Modifier.padding(padding))
+            else -> Column(Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
+                Text("ExpenseFlow", style = MaterialTheme.typography.headlineMedium)
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
                 SignedInScreen(vm, busy, session!!.currency ?: "INR")
             }
         }
@@ -67,30 +77,6 @@ private fun ExpenseApp(vm: ExpenseViewModel = viewModel()) {
             confirmButton = { TextButton(onClick = vm::confirmDiscard, enabled = !busy) { Text("Discard ${current.count}") } },
             dismissButton = { TextButton(onClick = { vm.prompt.value = null }, enabled = !busy) { Text("Cancel") } },
         )
-    }
-}
-
-@Composable
-private fun AuthScreen(vm: ExpenseViewModel, busy: Boolean) {
-    var register by rememberSaveable { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf("") }
-    var email by rememberSaveable { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var otp by remember { mutableStateOf("") }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(if (register) "Create account" else "Sign in", style = MaterialTheme.typography.titleLarge)
-        Text("Expired sessions keep your offline data. Sign in with the same account to continue syncing.")
-        if (register) OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-        OutlinedTextField(email, { email = it }, label = { Text("Email") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
-        OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-        if (register) {
-            OutlinedButton(onClick = { vm.sendOtp(name, email) }, enabled = !busy) { Text("Send email OTP") }
-            OutlinedTextField(otp, { otp = it }, label = { Text("OTP") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        }
-        Button(onClick = { vm.authenticate(Credentials(name, email, password, otp, register)) }, enabled = !busy) {
-            Text(if (register) "Create account" else "Sign in")
-        }
-        TextButton(onClick = { register = !register }, enabled = !busy) { Text(if (register) "Already have an account" else "Sign up") }
     }
 }
 
