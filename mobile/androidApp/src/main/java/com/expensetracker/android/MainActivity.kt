@@ -6,7 +6,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -117,6 +121,7 @@ private fun SignedInScreen(vm: ExpenseViewModel, busy: Boolean, currency: String
         expenses.map { SpendEntry(it.amountMinor, it.currency, it.date) },
         currency, kotlinx.datetime.Clock.System.todayIn(kotlinx.datetime.TimeZone.currentSystemDefault()),
     )
+    val today = remember { kotlinx.datetime.Clock.System.todayIn(kotlinx.datetime.TimeZone.currentSystemDefault()) }
     LaunchedEffect(failed.size) { if (failed.isEmpty() && tab == 2) tab = 0 }
     val showFailed = failed.isNotEmpty()
     val activeTab = if (tab == 2 && !showFailed) 0 else tab
@@ -138,7 +143,14 @@ private fun SignedInScreen(vm: ExpenseViewModel, busy: Boolean, currency: String
         label = { Text(syncLabel, style = MaterialTheme.typography.labelMedium) },
         modifier = Modifier.testTag("sync-status"),
     )
-    ScrollableTabRow(selectedTabIndex = activeTab) {
+    ScrollableTabRow(
+        selectedTabIndex = activeTab,
+        indicator = { positions ->
+            if (activeTab < positions.size) {
+                with(TabRowDefaults) { SecondaryIndicator(Modifier.tabIndicatorOffset(positions[activeTab])) }
+            }
+        },
+    ) {
         val titles = buildList { add("Expenses"); add("Categories"); if (showFailed) add("Failed (${failed.size})") }
         titles.forEachIndexed { index, title ->
             Tab(selected = activeTab == index, onClick = { tab = index }, text = { Text(title) })
@@ -152,10 +164,25 @@ private fun SignedInScreen(vm: ExpenseViewModel, busy: Boolean, currency: String
                 items(expenses, key = { it.id }) { expense ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
-                            Text(expense.description, style = MaterialTheme.typography.titleMedium)
-                            Text("${expense.amount} ${expense.currency} - ${expense.date}")
                             val category = categories.find { it.id == expense.categoryClientId || (expense.categoryServerId != null && it.serverId == expense.categoryServerId) }
-                            Text(category?.name ?: "Uncategorized")
+                            val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                            val dot = if (category == null) muted
+                            else ComposeColor((parseHexColor(category.color) ?: colorForName(category.name)))
+                            Row(Modifier.fillMaxWidth().testTag("expense-card"), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(12.dp).background(dot, CircleShape))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(expense.description, style = MaterialTheme.typography.titleMedium)
+                                    Text(friendlyDate(expense.date, today), style = MaterialTheme.typography.bodySmall, color = muted)
+                                    Text(
+                                        category?.name ?: "Uncategorized",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (category == null) muted.copy(alpha = 0.7f) else muted,
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text("${expense.amount} ${expense.currency}", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
+                            }
                             Row {
                                 TextButton(onClick = { editing = expense; editorOpen = true }, enabled = !busy) { Text("Edit") }
                                 TextButton(onClick = { deleting = expense }, enabled = !busy) { Text("Delete") }
