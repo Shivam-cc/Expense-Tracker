@@ -1,6 +1,8 @@
 package com.expensetracker.android
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.OneTimeWorkRequestBuilder
@@ -55,6 +57,29 @@ class MobileWalkthroughTest {
         compose.onNode(hasText(text) and hasClickAction()).performClick()
     }
 
+    private fun syncNow() {
+        compose.waitUntil(45_000) {
+            runCatching { compose.onNodeWithTag("sync-status").assertIsEnabled() }.isSuccess
+        }
+        compose.onNodeWithTag("sync-status").performClick()
+    }
+
+    private fun waitSynced() {
+        compose.waitUntil(45_000) {
+            compose.onAllNodes(hasTestTag("sync-status") and hasAnyDescendant(hasTextStartingWith("Synced")))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun hasTextStartingWith(prefix: String) = SemanticsMatcher("text starts with $prefix") { node ->
+        node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith(prefix) } == true
+    }
+
+    private fun signOut() {
+        compose.onNodeWithTag("overflow-menu").performClick()
+        click("Sign out")
+    }
+
     private fun waitForDialogClosed() {
         compose.waitUntil(15_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
     }
@@ -99,25 +124,25 @@ class MobileWalkthroughTest {
             click("Save")
             waitForDialogClosed()
             waitFor("Offline taxi")
-            waitFor("Unsynced: 2")
+            waitFor("2 pending")
         } finally {
             network(true)
         }
-        click("Sync now")
-        waitFor("Unsynced: 0")
+        syncNow()
+        waitSynced()
         compose.waitUntil(45_000) { runCatching { compose.onAllNodesWithText("Edit").onFirst().assertIsEnabled() }.isSuccess }
         compose.onAllNodesWithText("Edit").onFirst().performClick()
         field("Description", "Edited on emulator")
         click("Save")
         waitForDialogClosed()
-        waitFor("Unsynced: 1")
+        waitFor("1 pending")
         val workManager = WorkManager.getInstance(compose.activity)
         val work = OneTimeWorkRequestBuilder<SyncWorker>().build()
         workManager.enqueue(work).result.get()
         compose.waitUntil(45_000) {
             workManager.getWorkInfoById(work.id).get()?.state == WorkInfo.State.SUCCEEDED
         }
-        waitFor("Unsynced: 0")
+        waitSynced()
         click("Categories")
         click("Create category")
         field("Category name", "Pets")
@@ -142,8 +167,8 @@ class MobileWalkthroughTest {
         compose.onNode(hasText("Food") and hasClickAction()).assertIsDisplayed()
         click("Cancel")
         waitForDialogClosed()
-        click("Sync now")
-        waitFor("Unsynced: 0")
+        syncNow()
+        waitSynced()
         val login = api("/api/auth/login", JSONObject().put("email", email).put("password", password))
         val token = login.getString("token")
         val before = api("/api/v1/expenses/changes", token = token).getJSONArray("items")
@@ -155,8 +180,8 @@ class MobileWalkthroughTest {
         compose.onAllNodesWithText("Delete").onFirst().performClick()
         compose.onNode(hasText("Delete") and hasAnyAncestor(isDialog())).performClick()
         waitForDialogClosed()
-        click("Sync now")
-        waitFor("Unsynced: 0")
+        syncNow()
+        waitSynced()
         val after = api("/api/v1/expenses/changes", token = token).getJSONArray("items")
         assertEquals(1, (0 until after.length()).count { !after.getJSONObject(it).isNull("deletedAt") })
         click("Add expense")
@@ -164,7 +189,7 @@ class MobileWalkthroughTest {
         field("Amount", "10000000000.00")
         click("Save")
         waitForDialogClosed()
-        click("Sync now")
+        syncNow()
         waitFor("Failed (1)")
         click("Failed (1)")
         val graph = (compose.activity.application as ExpenseApplication).graph
@@ -175,8 +200,8 @@ class MobileWalkthroughTest {
         compose.onNode(hasText("Discard") and hasAnyAncestor(isDialog())).performClick()
         waitForDialogClosed()
         waitFor("No failed items")
-        waitFor("Unsynced: 0")
-        click("Sign out")
+        waitSynced()
+        signOut()
         waitFor("Sign up")
         compose.onNodeWithText("Expired sessions keep your offline data. Sign in with the same account to continue syncing.").assertIsDisplayed()
         field("Email", email)
@@ -184,7 +209,7 @@ class MobileWalkthroughTest {
         click("Sign in")
         waitFor("Add expense")
         compose.waitUntil(45_000) { runCatching { compose.onNodeWithText("Add expense").assertIsEnabled() }.isSuccess }
-        click("Sign out")
+        signOut()
         waitFor("Sign up")
     }
 }

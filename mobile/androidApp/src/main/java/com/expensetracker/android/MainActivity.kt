@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ExpenseApp(vm: ExpenseViewModel = viewModel()) {
     val ready by vm.ready.collectAsStateWithLifecycle()
@@ -56,6 +57,26 @@ private fun ExpenseApp(vm: ExpenseViewModel = viewModel()) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snack) },
+        topBar = {
+            if (ready && session != null) {
+                var menuOpen by remember { mutableStateOf(false) }
+                TopAppBar(
+                    title = { Text("ExpenseFlow") },
+                    actions = {
+                        IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("overflow-menu")) {
+                            Text("⋮", style = MaterialTheme.typography.titleLarge)
+                        }
+                        DropdownMenu(menuOpen, { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Sign out") },
+                                enabled = !busy,
+                                onClick = { menuOpen = false; vm.signOut() },
+                            )
+                        }
+                    },
+                )
+            }
+        },
     ) { padding ->
         when {
             !ready -> Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -63,7 +84,6 @@ private fun ExpenseApp(vm: ExpenseViewModel = viewModel()) {
             }
             session == null -> AuthScreen(vm, busy, Modifier.padding(padding))
             else -> Column(Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
-                Text("ExpenseFlow", style = MaterialTheme.typography.headlineMedium)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
                 SignedInScreen(vm, busy, session!!.currency ?: "INR")
             }
