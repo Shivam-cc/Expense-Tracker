@@ -29,7 +29,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.expensetracker.mobile.data.*
 import com.expensetracker.mobile.sync.FailedOutboxItem
 import com.expensetracker.mobile.util.Money
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
+import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.datetime.todayIn
 
 class MainActivity : ComponentActivity() {
@@ -166,10 +170,8 @@ private fun SignedInScreen(vm: ExpenseViewModel, busy: Boolean, currency: String
                         Column(Modifier.padding(12.dp)) {
                             val category = categories.find { it.id == expense.categoryClientId || (expense.categoryServerId != null && it.serverId == expense.categoryServerId) }
                             val muted = MaterialTheme.colorScheme.onSurfaceVariant
-                            val dot = if (category == null) muted
-                            else ComposeColor((parseHexColor(category.color) ?: colorForName(category.name)))
                             Row(Modifier.fillMaxWidth().testTag("expense-card"), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(12.dp).background(dot, CircleShape))
+                                CategoryDot(category)
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(expense.description, style = MaterialTheme.typography.titleMedium)
@@ -205,41 +207,102 @@ private fun SignedInScreen(vm: ExpenseViewModel, busy: Boolean, currency: String
 }
 
 @Composable
+private fun CategoryDot(category: CategoryRecord?) {
+    val color = if (category == null) MaterialTheme.colorScheme.onSurfaceVariant
+    else ComposeColor(parseHexColor(category.color) ?: colorForName(category.name))
+    Box(Modifier.size(12.dp).background(color, CircleShape))
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun ExpenseEditor(vm: ExpenseViewModel, existing: ExpenseRecord?, categories: List<CategoryRecord>, defaultCurrency: String, busy: Boolean, selectedCategory: String?, close: () -> Unit) {
     var description by remember { mutableStateOf(existing?.description ?: "") }
     var amount by remember { mutableStateOf(existing?.amount ?: "") }
     var currency by remember { mutableStateOf(existing?.currency ?: defaultCurrency) }
-    var date by remember { mutableStateOf(existing?.date?.toString() ?: LocalDate.now().toString()) }
+    var date by remember { mutableStateOf(existing?.date?.toJavaLocalDate() ?: LocalDate.now()) }
     var notes by remember { mutableStateOf(existing?.notes ?: "") }
     var category by remember {
         mutableStateOf(if (existing == null) selectedCategory else existing.categoryClientId
             ?: categories.find { existing.categoryServerId != null && it.serverId == existing.categoryServerId }?.id)
     }
+    var descriptionError by remember { mutableStateOf<String?>(null) }
+    var amountError by remember { mutableStateOf<String?>(null) }
     var picker by remember { mutableStateOf(false) }
+    var datePickerOpen by remember { mutableStateOf(false) }
+    fun valid(): Boolean {
+        descriptionError = if (description.isBlank()) "Enter a description" else null
+        val minor = runCatching { Money.parseMinor(amount, Money.minorDigits(currency.trim().uppercase())) }.getOrNull()
+        amountError = when {
+            minor == null -> "Enter a valid amount"
+            minor <= 0 -> "Amount must be greater than zero"
+            else -> null
+        }
+        return descriptionError == null && amountError == null
+    }
     AlertDialog(
         onDismissRequest = { if (!busy) close() },
         title = { Text(if (existing == null) "Add expense" else "Edit expense") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(description, { description = it }, label = { Text("Description") })
-                OutlinedTextField(amount, { amount = it }, label = { Text("Amount") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                OutlinedTextField(currency, { currency = it }, label = { Text("Currency (ISO code)") }, singleLine = true)
-                OutlinedTextField(date, { date = it }, label = { Text("Date (yyyy-MM-dd)") }, singleLine = true)
+                OutlinedTextField(
+                    description, { description = it; descriptionError = null },
+                    label = { Text("Description") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    isError = descriptionError != null, supportingText = descriptionError?.let { { Text(it) } },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        amount, { amount = it; amountError = null },
+                        label = { Text("Amount") }, singleLine = true, modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        isError = amountError != null, supportingText = amountError?.let { { Text(it) } },
+                    )
+                    OutlinedTextField(
+                        currency, { currency = it; amountError = null },
+                        label = { Text("Currency") }, singleLine = true, modifier = Modifier.width(110.dp),
+                    )
+                }
+                OutlinedButton(onClick = { datePickerOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Date: ${friendlyDate(date.toKotlinLocalDate(), LocalDate.now().toKotlinLocalDate())}")
+                }
                 Box {
-                    OutlinedButton(onClick = { picker = true }) { Text(categories.find { it.id == category }?.name ?: "Choose category") }
+                    val chosen = categories.find { it.id == category }
+                    OutlinedButton(onClick = { picker = true }, modifier = Modifier.fillMaxWidth()) {
+                        if (chosen != null) {
+                            CategoryDot(chosen)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(chosen?.name ?: "Choose category")
+                    }
                     DropdownMenu(picker, { picker = false }) {
-                        DropdownMenuItem(text = { Text("Uncategorized") }, onClick = { category = null; picker = false })
+                        DropdownMenuItem(text = { Text("Uncategorized") }, leadingIcon = { CategoryDot(null) }, onClick = { category = null; picker = false })
                         categories.forEach { row ->
-                            DropdownMenuItem(text = { Text(row.name) }, onClick = { category = row.id; picker = false })
+                            DropdownMenuItem(text = { Text(row.name) }, leadingIcon = { CategoryDot(row) }, onClick = { category = row.id; picker = false })
                         }
                     }
                 }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notes") })
+                OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, minLines = 2, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { vm.saveExpense(existing, description, amount, currency, date, category, notes, close) }, enabled = !busy) { Text("Save") } },
+        confirmButton = {
+            TextButton(onClick = {
+                if (valid()) vm.saveExpense(existing, description, amount, currency, date.toString(), category, notes, close)
+            }, enabled = !busy) { Text("Save") }
+        },
         dismissButton = { TextButton(onClick = close, enabled = !busy) { Text("Cancel") } },
     )
+    if (datePickerOpen) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        DatePickerDialog(
+            onDismissRequest = { datePickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { date = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                    datePickerOpen = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { datePickerOpen = false }) { Text("Cancel") } },
+        ) { DatePicker(state) }
+    }
 }
 
 @Composable
