@@ -2,6 +2,8 @@
 
 A full-stack expense tracking application built with **React 19** (frontend) and **Java Spring Boot** (backend).
 
+**Live app:** [https://expense-tracker-app-three-lake.vercel.app](https://expense-tracker-app-three-lake.vercel.app)
+
 ## Tech Stack
 
 ### Frontend
