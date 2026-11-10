@@ -5,7 +5,9 @@ name: expenseflow
 
 services:
   mongodb:
-    image: mongo:8.0
+    # 8.2, not 8.0: GitHub-hosted runners are on Linux 6.19+, and MongoDB 8.0
+    # refuses to start there (SERVER-121912). The 8.2 line still starts.
+    image: mongo:8.2
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "127.0.0.1:27017:27017"

@@ -76,8 +76,10 @@ jobs:
       # ubuntu-latest already ships the Android SDK (ANDROID_HOME is set), so no separate
       # SDK install step is needed. android-actions/setup-android@v3 was failing every run.
       - uses: gradle/actions/setup-gradle@v4
+      # assembleDebug only. :androidApp:build also builds the release variant, which
+      # fails in CI because expenseflow.apiUrl is a release-only property.
       - name: Build, unit tests and debug APK
-        run: ./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest :androidApp:build :androidApp:assembleDebug
+        run: ./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest :androidApp:assembleDebug
       - name: Upload Android reports and APK
         if: always()
         uses: actions/upload-artifact@v4
