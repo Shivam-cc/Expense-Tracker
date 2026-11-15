@@ -20,7 +20,7 @@ export default function Hero() {
             transition={{ duration: 0.6 }}
           >
             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-50 rounded-full border border-primary-100 mb-6">
-              <span className="w-2 h-2 bg-accent-500 rounded-full animate-pulse"></span>
+              <span className="w-2 h-2 bg-accent-500 rounded-full motion-safe:animate-pulse"></span>
               <span className="text-sm font-medium text-primary-700">Simple Expense Tracking</span>
             </div>
 
@@ -37,11 +37,11 @@ export default function Hero() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to="/register" className="group px-6 py-3.5 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 flex items-center justify-center gap-2">
+              <Link to="/register" className="group px-6 py-3.5 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 flex items-center justify-center gap-2">
                 Start Tracking Free
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
-              <Link to="/login" className="px-6 py-3.5 border-2 border-gray-200 text-gray-700 font-semibold rounded-xl hover:border-primary-300 hover:text-primary-600 transition-all text-center">
+              <Link to="/login" className="px-6 py-3.5 border-2 border-gray-200 text-gray-700 font-semibold rounded-xl hover:border-primary-300 hover:text-primary-600 transition-colors text-center">
                 Sign In
               </Link>
             </div>

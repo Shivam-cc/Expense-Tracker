@@ -51,7 +51,6 @@ function UserMenu({ user, onLogout }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={menuId}
-        aria-haspopup="true"
         className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-gray-100 ${focusRing}`}
       >
         <span className="w-7 h-7 rounded-full bg-primary-600 text-white text-sm font-semibold flex items-center justify-center" aria-hidden="true">

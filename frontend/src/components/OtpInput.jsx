@@ -67,7 +67,7 @@ export default function OtpInput({ value = '', onChange, disabled = false }) {
           onFocus={(e) => e.target.select()}
           disabled={disabled}
           className="w-11 h-12 text-center text-xl font-bold border-2 border-gray-300 rounded-xl
-                     focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-200
+                     focus:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-200
                      disabled:bg-gray-50 disabled:text-gray-400
                      transition-colors"
         />

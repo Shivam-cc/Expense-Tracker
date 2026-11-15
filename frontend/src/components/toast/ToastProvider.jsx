@@ -7,7 +7,8 @@ const STYLES = {
   error: { icon: AlertCircle, cls: 'border-red-200 bg-white text-gray-800', iconCls: 'text-red-500' },
   info: { icon: Info, cls: 'border-primary-200 bg-white text-gray-800', iconCls: 'text-primary-600' },
 }
-const DURATION = { success: 3500, info: 4000, error: 6000 }
+// Error toasts have no timer: they stay until dismissed so they can't be missed.
+const DURATION = { success: 3500, info: 4000 }
 const MAX_TOASTS = 4
 
 export default function ToastProvider({ children }) {
@@ -24,7 +25,7 @@ export default function ToastProvider({ children }) {
   const push = useCallback((type, message) => {
     const id = nextId.current++
     setToasts((list) => [...list.slice(-(MAX_TOASTS - 1)), { id, type, message }])
-    timers.current.set(id, setTimeout(() => dismiss(id), DURATION[type]))
+    if (DURATION[type]) timers.current.set(id, setTimeout(() => dismiss(id), DURATION[type]))
     return id
   }, [dismiss])
 
@@ -44,8 +45,6 @@ export default function ToastProvider({ children }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        aria-live="polite"
-        aria-atomic="false"
         className="fixed bottom-4 right-4 left-4 sm:left-auto z-[100] flex flex-col gap-2 sm:w-96 pointer-events-none"
       >
         {toasts.map((t) => {

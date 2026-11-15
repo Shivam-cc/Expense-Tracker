@@ -92,6 +92,11 @@ function Trend({ trend, loading, error, onRetry, truncated, currency }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
+      <ul className="sr-only">
+        {trend.points.map((p, i) => (
+          <li key={i}>{p.label}: {formatMoney(p.total, currency)}</li>
+        ))}
+      </ul>
       {truncated && (
         <p className="text-xs text-amber-600 mt-2">Showing the most recent expenses only; older entries in this range are not included.</p>
       )}

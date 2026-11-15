@@ -63,7 +63,7 @@ const itemVariants = {
 
 export default function Features() {
   return (
-    <section id="features" className="py-16 sm:py-24 px-6 sm:px-8 lg:px-12 bg-gray-50/50">
+    <section id="features" className="scroll-mt-20 py-16 sm:py-24 px-6 sm:px-8 lg:px-12 bg-gray-50/50">
       <div className="max-w-7xl mx-auto">
         {/* Section Header */}
         <motion.div
@@ -94,7 +94,7 @@ export default function Features() {
             <motion.div
               key={feature.title}
               variants={itemVariants}
-              className="group bg-white rounded-2xl p-6 border border-gray-100 hover:border-primary-200 hover:shadow-lg hover:shadow-primary-50 transition-all duration-300"
+              className="group bg-white rounded-2xl p-6 border border-gray-100 hover:border-primary-200 hover:shadow-lg hover:shadow-primary-50 transition-[border-color,box-shadow] duration-300"
             >
               <div className={`w-12 h-12 ${feature.bgColor} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                 <feature.icon className="w-6 h-6 text-gray-700" />

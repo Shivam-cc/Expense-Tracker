@@ -30,7 +30,7 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-16 sm:py-24 px-6 sm:px-8 lg:px-12">
+    <section id="how-it-works" className="scroll-mt-20 py-16 sm:py-24 px-6 sm:px-8 lg:px-12">
       <div className="max-w-7xl mx-auto">
         {/* Section Header */}
         <motion.div

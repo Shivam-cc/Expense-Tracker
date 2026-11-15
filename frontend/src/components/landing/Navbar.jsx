@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Menu, X, Wallet } from 'lucide-react'
@@ -9,8 +9,19 @@ const navLinks = [
   { href: '#why', label: 'Why ExpenseFlow' },
 ]
 
+const focusRing = 'rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500'
+
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setIsOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [isOpen])
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
@@ -27,23 +38,23 @@ export default function Navbar() {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((l) => (
-              <a key={l.href} href={l.href} className="text-gray-600 hover:text-primary-600 transition-colors font-medium">{l.label}</a>
+              <a key={l.href} href={l.href} className={`text-gray-600 hover:text-primary-600 transition-colors font-medium ${focusRing}`}>{l.label}</a>
             ))}
           </div>
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="px-4 py-2 text-gray-700 font-medium hover:text-primary-600 transition-colors">
+            <Link to="/login" className={`px-4 py-2 text-gray-700 font-medium hover:text-primary-600 transition-colors ${focusRing}`}>
               Sign In
             </Link>
-            <Link to="/register" className="px-5 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">
+            <Link to="/register" className={`px-5 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-md shadow-primary-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2`}>
               Get Started Free
             </Link>
           </div>
 
           {/* Mobile menu button */}
           <button
-            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            className={`md:hidden p-2 rounded-lg hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500`}
             onClick={() => setIsOpen(!isOpen)}
             aria-label={isOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={isOpen}
@@ -65,14 +76,14 @@ export default function Navbar() {
                   key={l.href}
                   href={l.href}
                   onClick={() => setIsOpen(false)}
-                  className="px-3 py-2 text-gray-600 hover:text-primary-600 font-medium"
+                  className={`px-3 py-2 text-gray-600 hover:text-primary-600 font-medium ${focusRing}`}
                 >
                   {l.label}
                 </a>
               ))}
               <div className="flex flex-col gap-2 pt-3 border-t border-gray-100">
-                <Link to="/login" className="px-4 py-2 text-center text-gray-700 font-medium">Sign In</Link>
-                <Link to="/register" className="px-5 py-2.5 text-center bg-primary-600 text-white font-medium rounded-lg">Get Started Free</Link>
+                <Link to="/login" className={`px-4 py-2 text-center text-gray-700 font-medium ${focusRing}`}>Sign In</Link>
+                <Link to="/register" className="px-5 py-2.5 text-center bg-primary-600 text-white font-medium rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">Get Started Free</Link>
               </div>
             </div>
           </motion.div>

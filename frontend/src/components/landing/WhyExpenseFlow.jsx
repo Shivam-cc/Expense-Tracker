@@ -28,7 +28,7 @@ const principles = [
 
 export default function WhyExpenseFlow() {
   return (
-    <section id="why" className="py-16 sm:py-24 px-6 sm:px-8 lg:px-12 bg-gradient-to-b from-gray-50/50 to-white">
+    <section id="why" className="scroll-mt-20 py-16 sm:py-24 px-6 sm:px-8 lg:px-12 bg-gradient-to-b from-gray-50/50 to-white">
       <div className="max-w-7xl mx-auto">
         {/* Section Header */}
         <motion.div
