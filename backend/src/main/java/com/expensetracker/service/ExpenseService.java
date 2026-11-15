@@ -43,6 +43,7 @@ public class ExpenseService {
         Expense expense = Expense.builder()
                 .description(request.getDescription())
                 .amount(request.getAmount())
+                .currency(user.getCurrency())
                 .date(request.getDate())
                 .category(category)
                 .user(user)

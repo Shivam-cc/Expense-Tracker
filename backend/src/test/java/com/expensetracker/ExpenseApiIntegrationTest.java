@@ -512,6 +512,36 @@ class ExpenseApiIntegrationTest extends IntegrationTestBase {
     // ---- currency ------------------------------------------------------------------------------
 
     @Test
+    void newWebExpensesStoreTheOwnersCurrency() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        long id = createExpense(auth, "Lunch", "12.34", null).get("id").asLong();
+
+        assertThat(expenseRepository.findById(id).orElseThrow().getCurrency()).isEqualTo("INR");
+    }
+
+    @Test
+    void changingTheCurrencyDoesNotRerateOldWebExpenses() throws Exception {
+        JsonNode auth = register(uniqueEmail(), PASSWORD);
+        long id = createExpense(auth, "Lunch", "12.34", null).get("id").asLong();
+        // A row written before currency was stored: no currency on the document.
+        Expense legacy = expenseRepository.findById(id).orElseThrow();
+        legacy.setCurrency(null);
+        expenseRepository.save(legacy);
+
+        send(patch("/api/users/me").header("Authorization", bearer(auth))
+                .contentType("application/json").content("{\"currency\":\"JPY\"}"), 200);
+
+        JsonNode feed = send(get("/api/v1/expenses/changes").header("Authorization", bearer(auth)), 200);
+        JsonNode item = null;
+        for (JsonNode candidate : feed.get("items")) {
+            if (candidate.get("id").asLong() == id) item = candidate;
+        }
+        assertThat(item).isNotNull();
+        assertThat(item.get("currency").asText()).isEqualTo("INR");
+        assertThat(item.get("amountMinor").asLong()).isEqualTo(1234L);
+    }
+
+    @Test
     void currencyDefaultsToInrAndCanBeChangedToAnyIso4217Code() throws Exception {
         JsonNode auth = register(uniqueEmail(), PASSWORD);
         assertThat(auth.get("currency").asText()).isEqualTo("INR");

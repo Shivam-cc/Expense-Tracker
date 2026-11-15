@@ -47,9 +47,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final String jwt = authHeader.substring(7);
         try {
-            String userEmail = jwtService.extractUsername(jwt);
-            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                User user = userRepository.findByEmail(userEmail).orElse(null);
+            if (SecurityContextHolder.getContext().getAuthentication() == null) {
+                // Primary-key lookup; an email lookup cannot use the case-insensitive email index.
+                User user = userRepository.findById(jwtService.extractUserId(jwt)).orElse(null);
                 if (user != null && jwtService.isTokenValid(jwt, user)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             user, null, user.getAuthorities());

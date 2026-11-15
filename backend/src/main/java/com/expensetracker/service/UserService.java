@@ -47,7 +47,11 @@ public class UserService {
             user.setName(request.getName());
         }
         if (request.getCurrency() != null) {
-            user.setCurrency(requireKnownCurrency(request.getCurrency()));
+            String currency = requireKnownCurrency(request.getCurrency());
+            if (!currency.equals(user.getCurrency())) {
+                expenseRepository.stampLegacyCurrency(user.getId(), user.getCurrency());
+            }
+            user.setCurrency(currency);
         }
         return toProfile(userRepository.save(user));
     }

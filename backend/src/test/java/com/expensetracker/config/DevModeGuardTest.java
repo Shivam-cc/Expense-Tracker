@@ -36,7 +36,7 @@ class DevModeGuardTest {
     void devModeOnRailwayRefusesToStartEvenWithTheLocalProfile() {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("local");
-        env.setProperty("RAILWAY_ENVIRONMENT", "production");
+        env.setProperty("RAILWAY_ENVIRONMENT_NAME", "production");
 
         assertThatThrownBy(() -> new DevModeGuard(true, env)).isInstanceOf(IllegalStateException.class);
     }

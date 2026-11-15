@@ -50,7 +50,7 @@ public class JwtService {
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
-                .subject(user.getUsername())
+                .subject(String.valueOf(user.getId()))
                 .claim(TOKEN_VERSION_CLAIM, user.getTokenVersion())
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + accessTokenTtlMs))
@@ -62,8 +62,9 @@ public class JwtService {
         return accessTokenTtlMs / 1000;
     }
 
-    public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
+    /** The user id the token was issued for. Throws NumberFormatException for tokens from the old email-subject format. */
+    public long extractUserId(String token) {
+        return Long.parseLong(extractAllClaims(token).getSubject());
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
@@ -77,7 +78,7 @@ public class JwtService {
     public boolean isTokenValid(String token, User user) {
         Claims claims = extractAllClaims(token);
         Integer tokenVersion = claims.get(TOKEN_VERSION_CLAIM, Integer.class);
-        return user.getUsername().equals(claims.getSubject())
+        return String.valueOf(user.getId()).equals(claims.getSubject())
                 && tokenVersion != null
                 && tokenVersion == user.getTokenVersion();
     }
