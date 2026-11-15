@@ -6,7 +6,7 @@ import { PASSWORD_HINT, validatePassword } from '../utils/password'
 import { Eye, EyeOff, KeyRound, Mail, ArrowLeft } from 'lucide-react'
 
 const inputCls =
-  'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm'
+  'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-transparent text-sm'
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate()

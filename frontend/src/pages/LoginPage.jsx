@@ -65,7 +65,7 @@ export default function LoginPage() {
                 onChange={handleChange}
                 required
                 placeholder="you@example.com"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-transparent text-sm"
               />
             </div>
             <div>
@@ -85,7 +85,7 @@ export default function LoginPage() {
                   onChange={handleChange}
                   required
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm pr-10"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-transparent text-sm pr-10"
                 />
                 <button
                   type="button"

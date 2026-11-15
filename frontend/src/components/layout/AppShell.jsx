@@ -51,7 +51,6 @@ function UserMenu({ user, onLogout }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={menuId}
-        aria-haspopup="true"
         className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-gray-100 ${focusRing}`}
       >
         <span className="w-7 h-7 rounded-full bg-primary-600 text-white text-sm font-semibold flex items-center justify-center" aria-hidden="true">
@@ -106,7 +105,7 @@ export default function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-canvas">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-3 focus:py-2 focus:rounded-lg focus:shadow"

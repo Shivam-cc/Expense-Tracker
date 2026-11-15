@@ -1,82 +1,46 @@
-import { motion } from 'framer-motion'
-import { UserPlus, Receipt, Tags, LineChart } from 'lucide-react'
+import { Capture } from './ui'
 
 const steps = [
   {
-    icon: UserPlus,
     step: '01',
-    title: 'Create Account',
+    title: 'Create your account',
     description: 'Sign up with your email and confirm it with a 6-digit code we send you.',
+    capture: { name: 'steps_register_capture', alt: 'The ExpenseFlow sign-up form with name, email and password fields.' },
   },
   {
-    icon: Receipt,
     step: '02',
-    title: 'Add Expenses',
-    description: 'Log each expense with an amount, date, and optional notes, in just a few taps.',
+    title: 'Add an expense',
+    description: 'Log an amount, a date and optional notes, and file it under one of your own categories.',
+    capture: { name: 'steps_add_expense_capture', alt: 'The Add Expense dialog with a description, amount, date and category filled in.' },
   },
   {
-    icon: Tags,
     step: '03',
-    title: 'Organise',
-    description: 'Group expenses into your own categories, each with an icon and colour.',
-  },
-  {
-    icon: LineChart,
-    step: '04',
-    title: 'Review & Export',
+    title: 'Review and export',
     description: 'Check monthly summaries and charts, filter by date or category, and export to CSV.',
+    capture: { name: 'steps_insights_capture', alt: 'The spending-by-category chart and daily trend on the dashboard, shown with sample data.' },
   },
 ]
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-16 sm:py-24 px-6 sm:px-8 lg:px-12">
-      <div className="max-w-7xl mx-auto">
-        {/* Section Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-16"
-        >
-          <span className="text-sm font-semibold text-primary-600 uppercase tracking-wider">How It Works</span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mt-3 mb-4">
-            Get Started in 4 Simple Steps
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            From sign-up to your first summary in a few minutes.
-          </p>
-        </motion.div>
-
-        {/* Steps */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {steps.map((step, index) => (
-            <motion.div
-              key={step.step}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.15 }}
-              className="relative text-center"
-            >
-              {/* Connector line */}
-              {index < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-10 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-primary-200 to-transparent"></div>
-              )}
-
-              <div className="relative inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary-50 to-primary-100 rounded-2xl mb-5 mx-auto">
-                <step.icon className="w-8 h-8 text-primary-600" />
-                <span className="absolute -top-2 -right-2 w-7 h-7 bg-primary-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                  {step.step}
-                </span>
-              </div>
-
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{step.title}</h3>
-              <p className="text-gray-600 leading-relaxed">{step.description}</p>
-            </motion.div>
-          ))}
+    <section id="how-it-works" className="ef-section ef-section--canvas ef-anchor" aria-labelledby="how-title">
+      <div className="ef-container">
+        <div className="ef-head">
+          <h2 id="how-title" className="ef-h2">Three steps from sign-up to your first summary</h2>
         </div>
+
+        <ol className="ef-steps">
+          {steps.map((s) => (
+            <li key={s.step} className="ef-card ef-step">
+              <Capture name={s.capture.name} width={1120} height={1400} alt={s.capture.alt} />
+              <div className="ef-card__body">
+                <span className="ef-step__num" aria-hidden="true">{s.step}</span>
+                <h3 className="ef-h3">{s.title}</h3>
+                <p className="ef-small">{s.description}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   )

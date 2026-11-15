@@ -8,8 +8,8 @@ export default function LegalLayout({ title, updated, children }) {
       <header className="border-b border-gray-100">
         <div className="max-w-3xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center">
+              <Wallet className="w-5 h-5 text-primary-300" />
             </div>
             <span className="text-xl font-bold text-gray-900">ExpenseFlow</span>
           </Link>

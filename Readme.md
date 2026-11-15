@@ -2,6 +2,8 @@
 
 A full-stack expense tracking application built with **React 19** (frontend) and **Java Spring Boot** (backend).
 
+**Live app:** [https://expense-tracker-app-three-lake.vercel.app](https://expense-tracker-app-three-lake.vercel.app)
+
 ## Tech Stack
 
 ### Frontend
@@ -88,9 +90,9 @@ The local database has no authentication and is exposed only on `127.0.0.1`; do 
 **Backend** (http://localhost:8080):
 ```bash
 cd backend
-./mvnw spring-boot:run          # Windows: .\mvnw.cmd spring-boot:run
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=local"          # Windows: .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"
 ```
-The `local` profile is the default. It connects to `mongodb://localhost:27017/expense_tracker?replicaSet=rs0&directConnection=true`
+Pass the `local` profile explicitly, as above. The default profile is `prod`, which refuses to start without production settings, so a missing variable can never enable dev mode. The `local` profile connects to `mongodb://localhost:27017/expense_tracker?replicaSet=rs0&directConnection=true`
 and preconfigures a dev-only JWT secret and OTP dev mode (verification codes returned in API responses).
 Override `MONGODB_URI` to use another replica set or Atlas; include the database name in the URI.
 Indexes and the 16 default categories are initialized idempotently at startup. The numeric API ID format is preserved.

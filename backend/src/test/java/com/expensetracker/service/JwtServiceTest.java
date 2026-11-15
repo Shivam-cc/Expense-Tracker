@@ -2,11 +2,15 @@ package com.expensetracker.service;
 
 import com.expensetracker.model.User;
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,7 +34,7 @@ class JwtServiceTest {
     }
 
     private static User user(int tokenVersion) {
-        return User.builder().email("a@example.com").name("A").password("x").tokenVersion(tokenVersion).build();
+        return User.builder().id(1L).email("a@example.com").name("A").password("x").tokenVersion(tokenVersion).build();
     }
 
     @Test
@@ -55,7 +59,7 @@ class JwtServiceTest {
 
         String token = jwt.generateAccessToken(user);
 
-        assertThat(jwt.extractUsername(token)).isEqualTo("a@example.com");
+        assertThat(jwt.extractUserId(token)).isEqualTo(1L);
         assertThat(jwt.isTokenValid(token, user)).isTrue();
     }
 
@@ -71,9 +75,19 @@ class JwtServiceTest {
     void tokenForADifferentSubjectIsNotValid() {
         JwtService jwt = service(SECRET, 60_000);
         String token = jwt.generateAccessToken(user(0));
-        User other = User.builder().email("b@example.com").name("B").password("x").tokenVersion(0).build();
+        User other = User.builder().id(2L).email("b@example.com").name("B").password("x").tokenVersion(0).build();
 
         assertThat(jwt.isTokenValid(token, other)).isFalse();
+    }
+
+    @Test
+    void tokenIssuedWithAnEmailSubjectIsRejectedNotCrashing() {
+        JwtService jwt = service(SECRET, 60_000);
+        String legacy = Jwts.builder().subject("a@example.com").claim("tv", 0)
+                .expiration(new Date(System.currentTimeMillis() + 60_000))
+                .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(SECRET))).compact();
+
+        assertThatThrownBy(() -> jwt.extractUserId(legacy)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -88,11 +102,11 @@ class JwtServiceTest {
     void tokensSignedWithAnotherKeyOrTamperedAreRejected() {
         String foreign = service(OTHER_SECRET, 60_000).generateAccessToken(user(0));
         JwtService jwt = service(SECRET, 60_000);
-        assertThatThrownBy(() -> jwt.extractUsername(foreign)).isInstanceOf(JwtException.class);
+        assertThatThrownBy(() -> jwt.extractUserId(foreign)).isInstanceOf(JwtException.class);
 
         String token = jwt.generateAccessToken(user(0));
         String tampered = token.substring(0, token.length() - 6) + "AAAAAA";
-        assertThatThrownBy(() -> jwt.extractUsername(tampered)).isInstanceOf(JwtException.class);
+        assertThatThrownBy(() -> jwt.extractUserId(tampered)).isInstanceOf(JwtException.class);
     }
 
     @Test

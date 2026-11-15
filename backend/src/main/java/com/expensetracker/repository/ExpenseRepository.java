@@ -14,6 +14,14 @@ public interface ExpenseRepository extends DocumentRepository<Expense>, ExpenseQ
     @Query(value = "{ 'user': ?0 }", delete = true)
     long deleteByUserId(Long userId);
 
+    /**
+     * Pins rows written before currency was stored to the currency they are displayed in now. Must run before
+     * the owner's currency changes. The response for these rows does not change, so {@code updatedAt} stays put.
+     */
+    @Query("{ 'user': ?0, 'currency': null }")
+    @Update("{ '$set': { 'currency': ?1 } }")
+    long stampLegacyCurrency(Long userId, String currency);
+
     /** Detaches live expenses from a category being deleted; {@code updatedAt} lets sync clients see the change. */
     @Query("{ 'category': ?0, 'deletedAt': null }")
     @Update("{ '$unset': { 'category': '' }, '$set': { 'updatedAt': ?1 } }")

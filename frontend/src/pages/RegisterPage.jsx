@@ -105,14 +105,14 @@ export default function RegisterPage() {
   }
 
   const inputCls =
-    'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm'
+    'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-transparent text-sm'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-2xl mb-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-2xl mb-4">
             {step === 1 ? (
               <TrendingDown className="w-7 h-7 text-white" />
             ) : (
@@ -138,14 +138,14 @@ export default function RegisterPage() {
           {/* Progress indicator */}
           <div className="flex items-center gap-2 mb-6 justify-center">
             <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">1</div>
-              <span className={`text-xs font-medium ${step === 1 ? 'text-blue-600' : 'text-gray-400'}`}>Details</span>
+              <div className="w-6 h-6 rounded-full bg-primary-600 text-white text-xs flex items-center justify-center font-bold">1</div>
+              <span className={`text-xs font-medium ${step === 1 ? 'text-primary-600' : 'text-gray-400'}`}>Details</span>
             </div>
-            <div className={`h-px w-8 ${step === 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+            <div className={`h-px w-8 ${step === 2 ? 'bg-primary-600' : 'bg-gray-200'}`} />
             <div className="flex items-center gap-1.5">
               <div className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold
-                ${step === 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400'}`}>2</div>
-              <span className={`text-xs font-medium ${step === 2 ? 'text-blue-600' : 'text-gray-400'}`}>Verify</span>
+                ${step === 2 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-400'}`}>2</div>
+              <span className={`text-xs font-medium ${step === 2 ? 'text-primary-600' : 'text-gray-400'}`}>Verify</span>
             </div>
           </div>
 
@@ -211,7 +211,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
+                className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
                 {loading ? 'Sending code…' : 'Send Verification Code →'}
               </button>
@@ -227,7 +227,7 @@ export default function RegisterPage() {
                   <span className="font-mono font-bold text-amber-800 tracking-widest text-base">{devOtp}</span>
                 </div>
               ) : (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <div className="p-3 bg-primary-50 border border-primary-200 rounded-lg text-sm text-primary-700">
                   A 6-digit code was sent to <strong>{form.email}</strong>. Check your inbox (and spam folder).
                 </div>
               )}
@@ -248,7 +248,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading || otp.length < 6 || countdown <= 0}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
+                className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
                 {loading ? 'Verifying…' : 'Verify & Create Account'}
               </button>
@@ -265,7 +265,7 @@ export default function RegisterPage() {
                   type="button"
                   onClick={handleResend}
                   disabled={!canResend || loading}
-                  className="text-blue-600 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  className="text-primary-600 hover:text-primary-700 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
                   {canResend ? 'Resend code' : `Resend in ${resendCooldown}s`}
                 </button>
@@ -276,7 +276,7 @@ export default function RegisterPage() {
           {step === 1 && (
             <p className="text-center text-sm text-gray-500 mt-6">
               Already have an account?{' '}
-              <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+              <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
                 Sign in
               </Link>
             </p>

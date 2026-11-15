@@ -7,7 +7,7 @@ import { ArrowLeft, LogOut, Trash2, X } from 'lucide-react'
 import Tabs from '../components/ui/Tabs'
 
 const inputCls =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
+  'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500'
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD', 'AED', 'CHF', 'CNY']
 
 const primaryBtn =

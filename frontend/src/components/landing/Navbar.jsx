@@ -1,81 +1,68 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { Menu, X, Wallet } from 'lucide-react'
+import { CtaLink } from './ui'
 
 const navLinks = [
-  { href: '#features', label: 'Features' },
-  { href: '#how-it-works', label: 'How It Works' },
+  { href: '#features', label: 'Tools' },
+  { href: '#platforms', label: 'Where it runs' },
+  { href: '#how-it-works', label: 'How it works' },
   { href: '#why', label: 'Why ExpenseFlow' },
+  { href: '#faq', label: 'FAQ' },
 ]
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
 
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900">ExpenseFlow</span>
-          </div>
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setIsOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [isOpen])
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
+  return (
+    <nav className="ef-nav" aria-label="Main">
+      <div className="ef-container">
+        <div className="ef-nav__bar">
+          <Link to="/" className="ef-brand" aria-label="ExpenseFlow home">
+            <span className="ef-brand__tile" aria-hidden="true"><Wallet /></span>
+            ExpenseFlow
+          </Link>
+
+          <div className="ef-nav__links">
             {navLinks.map((l) => (
-              <a key={l.href} href={l.href} className="text-gray-600 hover:text-primary-600 transition-colors font-medium">{l.label}</a>
+              <a key={l.href} href={l.href} className="ef-navlink">{l.label}</a>
             ))}
           </div>
 
-          {/* CTA Buttons */}
-          <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="px-4 py-2 text-gray-700 font-medium hover:text-primary-600 transition-colors">
-              Sign In
-            </Link>
-            <Link to="/register" className="px-5 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">
-              Get Started Free
-            </Link>
+          <div className="ef-nav__cta">
+            <Link to="/login" className="ef-navlink">Sign in</Link>
+            <CtaLink to="/register">Get started</CtaLink>
           </div>
 
-          {/* Mobile menu button */}
           <button
-            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            type="button"
+            className="ef-menu-btn"
             onClick={() => setIsOpen(!isOpen)}
             aria-label={isOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={isOpen}
+            aria-controls="ef-mobile-menu"
           >
-            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {isOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
         </div>
 
-        {/* Mobile Navigation */}
         {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="md:hidden py-4 border-t border-gray-100"
-          >
-            <div className="flex flex-col gap-3">
-              {navLinks.map((l) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setIsOpen(false)}
-                  className="px-3 py-2 text-gray-600 hover:text-primary-600 font-medium"
-                >
-                  {l.label}
-                </a>
-              ))}
-              <div className="flex flex-col gap-2 pt-3 border-t border-gray-100">
-                <Link to="/login" className="px-4 py-2 text-center text-gray-700 font-medium">Sign In</Link>
-                <Link to="/register" className="px-5 py-2.5 text-center bg-primary-600 text-white font-medium rounded-lg">Get Started Free</Link>
-              </div>
-            </div>
-          </motion.div>
+          <div id="ef-mobile-menu" className="ef-mobile">
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} onClick={() => setIsOpen(false)} className="ef-navlink">{l.label}</a>
+            ))}
+            <Link to="/login" className="ef-navlink">Sign in</Link>
+            <CtaLink to="/register">Get started</CtaLink>
+          </div>
         )}
       </div>
     </nav>

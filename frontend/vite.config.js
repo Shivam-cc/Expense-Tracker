@@ -15,8 +15,8 @@ export default defineConfig({
         name: 'ExpenseFlow - Smart Expense Tracker',
         short_name: 'ExpenseFlow',
         description: 'Log expenses, organise them with custom categories, see monthly summaries and charts, and export to CSV.',
-        theme_color: '#2563eb',
-        background_color: '#ffffff',
+        theme_color: '#FAF9F5',
+        background_color: '#FAF9F5',
         display: 'standalone',
         scope: '/',
         start_url: '/',
@@ -39,7 +39,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,ttf}'],
         cleanupOutdatedCaches: true,
         navigateFallback: '/index.html',
         // Authenticated API responses (any origin) must never be served from the cache.
@@ -48,20 +48,6 @@ export default defineConfig({
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: { cacheName: 'google-fonts', expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-files',
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
           },
         ],
       },

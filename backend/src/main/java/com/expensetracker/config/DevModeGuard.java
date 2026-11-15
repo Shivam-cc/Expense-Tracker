@@ -12,7 +12,7 @@ public class DevModeGuard {
     public DevModeGuard(@Value("${app.otp.dev-mode:false}") boolean devOtpMode, Environment env) {
         if (!devOtpMode) return;
         boolean local = env.acceptsProfiles(Profiles.of("local"));
-        boolean onRailway = env.getProperty("RAILWAY_ENVIRONMENT") != null;
+        boolean onRailway = env.getProperty("RAILWAY_ENVIRONMENT_NAME") != null;
         if (!local || onRailway) {
             throw new IllegalStateException(
                     "app.otp.dev-mode is enabled outside a local run. Refusing to start.");
