@@ -1,16 +1,77 @@
 @import "tailwindcss";
 
-@theme {
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("/fonts/cormorant-garamond/CormorantGaramond-VariableFont_wght.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("/fonts/cormorant-garamond/CormorantGaramond-Italic-VariableFont_wght.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter/Inter-VariableFont_opsz_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* The one tokens block. Sections read these via var(), never raw values. */
+@theme static {
+  --color-canvas: #FAF9F5;
+  --color-surface: #FFFDFA;
+  --color-surface-alt: #F0EBDF;
+  --color-text: #15110A;
+  --color-text-muted: #514D44;
+  --color-divider: #DDD7CB;
+  --color-control-border: #6D685E;
+  --color-accent: #F2DC55;
+  --color-accent-hover: #DBC539;
+  --color-on-accent: #000000;
+  --color-accent-text: #4C4300;
+  --color-focus-ring: #6B5E00;
+
+  --font-primary: "Cormorant Garamond", serif;
+  --font-secondary: "Inter", sans-serif;
+
+  --text-display: clamp(3.5rem, 2rem + 7vw, 8.5rem);
+  --text-h1: clamp(2.75rem, 1.8rem + 4vw, 5.5rem);
+  --text-h2: clamp(2.25rem, 1.6rem + 2.6vw, 4rem);
+  --text-h3: clamp(1.5rem, 1.25rem + 1vw, 2rem);
+  --text-body: 1.0625rem;
+  --text-small: 0.9375rem;
+  --text-label: 0.8125rem;
+
+  --radius-1: 6px;
+  --radius-2: 8px;
+  --radius-3: 16px;
+  --radius-pill: 999px;
+
+  --space-section: clamp(4.5rem, 9vw, 8.5rem);
+  --space-gutter: clamp(1.25rem, 4vw, 3.75rem);
+  --space-stack: clamp(1.25rem, 2.2vw, 2rem);
+}
+
+/* App screens keep their primary-* classes; the scale now maps to ink and butter yellow. */
+@theme inline {
+  --color-primary-50: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface));
+  --color-primary-100: color-mix(in srgb, var(--color-accent) 40%, var(--color-surface));
+  --color-primary-200: color-mix(in srgb, var(--color-accent) 65%, var(--color-surface));
+  --color-primary-300: var(--color-accent);
+  --color-primary-400: var(--color-accent-hover);
+  --color-primary-500: var(--color-text);
+  --color-primary-600: var(--color-text);
+  --color-primary-700: var(--color-accent-text);
+  --color-primary-800: var(--color-accent-text);
+  --color-primary-900: var(--color-text);
 
   --color-accent-50: #f0fdf4;
   --color-accent-100: #dcfce7;
@@ -24,11 +85,34 @@
   --color-expense: #ef4444;
   --color-income: #22c55e;
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-secondary);
+  --font-serif: var(--font-primary);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text);
+    font-family: var(--font-secondary);
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-primary);
+    letter-spacing: -0.02em;
+  }
 }
 
 html {
   color-scheme: light;
+}
+
+/* Unlayered so it beats utility-layer outline-none and ring-* on every control. */
+:focus-visible {
+  outline: 3px solid var(--color-text);
+  outline-offset: 2px;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
 }
 
 @media (prefers-reduced-motion: no-preference) {
